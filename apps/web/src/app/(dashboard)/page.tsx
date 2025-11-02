@@ -1,7 +1,6 @@
 "use client";
 
 import { apiClient } from "@/lib/api/client";
-import { toast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
@@ -17,11 +16,6 @@ export default function DashboardPage() {
     if (!file) return;
 
     if (file.type !== "application/pdf") {
-      toast({
-        title: "Invalid file type",
-        description: "Only PDF files are allowed",
-        variant: "destructive",
-      });
       return;
     }
 
@@ -37,17 +31,8 @@ export default function DashboardPage() {
 
       // Navigate to the document page
       router.push(`/doc/${uploadData.document_id}`);
-      
-      toast({
-        title: "Upload successful",
-        description: "Your PDF has been uploaded and is being processed.",
-      });
     } catch (err: any) {
-      toast({
-        title: "Upload failed",
-        description: err.message || "Failed to upload PDF",
-        variant: "destructive",
-      });
+      console.error("Upload failed:", err);
     } finally {
       setUploading(false);
       if (fileInputRef.current) {

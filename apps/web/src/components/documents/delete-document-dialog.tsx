@@ -17,7 +17,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { Trash2 } from "lucide-react";
 import { apiClient } from "@/lib/api/client";
-import { toast } from "@/hooks/use-toast";
 
 interface DeleteDocumentDialogProps {
   documentId: string;
@@ -49,10 +48,6 @@ export function DeleteDocumentDialog({
     mutationFn: () => apiClient.deleteDocument(documentId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["documents"] });
-      toast({
-        title: "Document deleted",
-        description: `"${documentTitle}" has been deleted successfully.`,
-      });
       
       if (isCurrentDocument) {
         router.push("/");
@@ -62,11 +57,7 @@ export function DeleteDocumentDialog({
       onDelete?.();
     },
     onError: (error) => {
-      toast({
-        title: "Error deleting document",
-        description: error instanceof Error ? error.message : "Failed to delete document",
-        variant: "destructive",
-      });
+      console.error("Error deleting document:", error);
     },
   });
 
