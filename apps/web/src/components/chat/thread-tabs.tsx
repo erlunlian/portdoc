@@ -48,7 +48,7 @@ export function ThreadTabs({
                 )}
               >
                 <MessageSquare className="h-3 w-3" />
-                <span className="max-w-[120px] truncate">
+                <span className="whitespace-nowrap">
                   {thread.title || `Chat ${new Date(thread.created_at).toLocaleDateString()}`}
                 </span>
                 <div className="bg-muted absolute inset-y-0 right-1 flex items-center rounded-md p-0.5 opacity-0 transition-all group-hover:opacity-100">
