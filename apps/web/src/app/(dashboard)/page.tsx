@@ -1,14 +1,58 @@
 "use client";
 
-import { FileUploader } from "@/components/documents/file-uploader";
+import { apiClient } from "@/lib/api/client";
+import { toast } from "@/hooks/use-toast";
+import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
+import { useRef, useState } from "react";
 
 export default function DashboardPage() {
   const router = useRouter();
+  const queryClient = useQueryClient();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
 
-  const handleUploadComplete = (documentId?: string) => {
-    if (documentId) {
-      router.push(`/doc/${documentId}`);
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.type !== "application/pdf") {
+      toast({
+        title: "Invalid file type",
+        description: "Only PDF files are allowed",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setUploading(true);
+
+    try {
+      // Upload document directly to backend
+      const title = file.name.replace(/\.pdf$/i, "");
+      const uploadData = await apiClient.uploadDocument(file, title);
+
+      // Invalidate documents query to refresh the list
+      queryClient.invalidateQueries({ queryKey: ["documents"] });
+
+      // Navigate to the document page
+      router.push(`/doc/${uploadData.document_id}`);
+      
+      toast({
+        title: "Upload successful",
+        description: "Your PDF has been uploaded and is being processed.",
+      });
+    } catch (err: any) {
+      toast({
+        title: "Upload failed",
+        description: err.message || "Failed to upload PDF",
+        variant: "destructive",
+      });
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
     }
   };
 
@@ -26,7 +70,25 @@ export default function DashboardPage() {
             Select a document from the sidebar or upload a new one
           </p>
         </div>
-        <FileUploader onUploadComplete={handleUploadComplete} />
+        
+        {/* Hidden File Input */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".pdf"
+          onChange={handleFileSelect}
+          className="hidden"
+          disabled={uploading}
+        />
+        
+        {/* Upload Button */}
+        <button
+          onClick={() => fileInputRef.current?.click()}
+          disabled={uploading}
+          className="bg-black text-white px-6 py-3 rounded-lg hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {uploading ? "Uploading..." : "Choose PDF"}
+        </button>
       </div>
     </div>
   );

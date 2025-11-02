@@ -1,11 +1,10 @@
 "use client";
 
 import { apiClient } from "@/lib/api/client";
-import type { UploadURLResponse } from "@/types/api";
 import { useRef, useState } from "react";
 
 interface FileUploaderProps {
-  onUploadComplete?: () => void;
+  onUploadComplete?: (documentId?: string) => void;
 }
 
 export function FileUploader({ onUploadComplete }: FileUploaderProps) {
@@ -26,24 +25,11 @@ export function FileUploader({ onUploadComplete }: FileUploaderProps) {
     setError(null);
 
     try {
-      // Get upload URL from API
+      // Upload document directly to backend
       const title = file.name.replace(/\.pdf$/i, "");
-      const uploadData = (await apiClient.createUploadURL(title, file.name)) as UploadURLResponse;
+      const uploadData = await apiClient.uploadDocument(file, title);
 
-      // Upload file to Supabase Storage using signed URL
-      const supabase = await import("@/lib/supabase/client").then((m) => m.createClient());
-      const { error: uploadError } = await supabase.storage
-        .from("pdfs")
-        .upload(uploadData.storage_path, file, {
-          upsert: true,
-        });
-
-      if (uploadError) throw uploadError;
-
-      // Trigger ingestion
-      await apiClient.ingestDocument(uploadData.document_id);
-
-      onUploadComplete?.();
+      onUploadComplete?.(uploadData.document_id);
     } catch (err: any) {
       setError(err.message || "Upload failed");
     } finally {

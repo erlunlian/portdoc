@@ -1,6 +1,6 @@
 "use client";
 
-import { FileUploader } from "@/components/documents/file-uploader";
+import { DeleteDocumentDialog } from "@/components/documents/delete-document-dialog";
 import {
   CommandDialog,
   CommandEmpty,
@@ -9,10 +9,17 @@ import {
   CommandItem,
   CommandList,
 } from "@/components/ui/command";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { apiClient } from "@/lib/api/client";
 import { createClient } from "@/lib/supabase/client";
 import type { Document } from "@/types/api";
 import { useQuery } from "@tanstack/react-query";
+import { MoreVertical, Trash2 } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
@@ -21,8 +28,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const pathname = usePathname();
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
-  const [showUploadModal, setShowUploadModal] = useState(false);
   const [showSearchCommand, setShowSearchCommand] = useState(false);
+  const [deleteDialogDoc, setDeleteDialogDoc] = useState<Document | null>(null);
 
   // Load collapsed state from localStorage
   useEffect(() => {
@@ -60,13 +67,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     router.refresh();
   };
 
-  const handleUploadComplete = (documentId?: string) => {
-    setShowUploadModal(false);
-    if (documentId) {
-      router.push(`/doc/${documentId}`);
-    }
-  };
-
   return (
     <div className="flex h-screen bg-white">
       {/* Sidebar - PDF List */}
@@ -76,14 +76,18 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         {/* Header */}
         <div className="p-2">
           <div className="mb-2 flex items-center justify-between px-2 pt-2">
-            {!isCollapsed && (
-              <div className="flex items-center gap-2">
-                <div className="flex h-7 w-7 items-center justify-center rounded-full bg-black text-xs font-bold text-white">
-                  P
-                </div>
-                <span className="text-sm font-semibold">PortDoc</span>
+            <button
+              onClick={() => router.push("/")}
+              className={`flex items-center gap-2 rounded-lg transition-colors hover:bg-gray-100 ${
+                isCollapsed ? "p-1.5" : "p-1"
+              }`}
+              title="Go to homepage"
+            >
+              <div className="flex h-7 w-7 items-center justify-center rounded-full bg-black text-xs font-bold text-white">
+                P
               </div>
-            )}
+              {!isCollapsed && <span className="text-sm font-semibold">PortDoc</span>}
+            </button>
             <button
               onClick={() => setIsCollapsed(!isCollapsed)}
               className="rounded-lg p-1.5 transition-colors hover:bg-gray-100"
@@ -100,9 +104,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             </button>
           </div>
 
-          {/* New Chat Button */}
+          {/* New Document Button */}
           <button
-            onClick={() => setShowUploadModal(true)}
+            onClick={() => router.push("/")}
             className={`mb-1 flex w-full items-center ${isCollapsed ? "justify-center p-2" : "justify-start px-3 py-2"} gap-2 rounded-lg transition-colors hover:bg-gray-100`}
             title="Upload new PDF"
           >
@@ -140,7 +144,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           {!isCollapsed && (
             <div className="px-4 py-2">
               <h3 className="text-xs font-semibold uppercase tracking-wider text-gray-500">
-                Chats
+                Documents
               </h3>
             </div>
           )}
@@ -155,18 +159,45 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           ) : (
             <div className={`${isCollapsed ? "hidden" : "px-2"}`}>
               {documents.map((doc) => (
-                <button
+                <div
                   key={doc.id}
-                  onClick={() => router.push(`/doc/${doc.id}`)}
-                  className={`w-full rounded-lg px-3 py-2 text-left text-sm transition-colors hover:bg-gray-100 ${
+                  className={`group relative flex w-full items-center rounded-lg transition-colors hover:bg-gray-100 ${
                     selectedDocId === doc.id ? "bg-gray-100" : ""
                   }`}
                 >
-                  <div className="truncate">{doc.title}</div>
-                  {doc.status === "processing" && (
-                    <div className="mt-0.5 text-xs text-gray-400">Processing...</div>
-                  )}
-                </button>
+                  <button
+                    onClick={() => router.push(`/doc/${doc.id}`)}
+                    className="min-w-0 flex-1 px-3 py-2 text-left text-sm"
+                  >
+                    <div className="truncate pr-2">{doc.title}</div>
+                    {doc.status === "processing" && (
+                      <div className="mt-0.5 text-xs text-gray-400">Processing...</div>
+                    )}
+                  </button>
+
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <button
+                        className="mr-2 flex-shrink-0 rounded p-1 opacity-0 transition-opacity hover:bg-gray-200 group-hover:opacity-100"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <MoreVertical className="h-4 w-4" />
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-48">
+                      <DropdownMenuItem
+                        onClick={(e: React.MouseEvent) => {
+                          e.stopPropagation();
+                          setDeleteDialogDoc(doc);
+                        }}
+                        className="text-red-600 focus:text-red-600"
+                      >
+                        <Trash2 className="mr-2 h-4 w-4" />
+                        Delete
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
               ))}
             </div>
           )}
@@ -180,7 +211,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               className={`flex w-full items-center ${isCollapsed ? "justify-center p-2" : "justify-start px-3 py-2"} gap-3 rounded-lg transition-colors hover:bg-gray-100`}
               title="Profile menu"
             >
-              <div className="flex h-7 w-7 items-center justify-center rounded-full bg-green-600 text-xs font-medium text-white">
+              <div className="flex h-7 w-7 items-center justify-center rounded-full bg-black text-xs font-medium text-white">
                 e
               </div>
               {!isCollapsed && (
@@ -247,33 +278,22 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </CommandList>
       </CommandDialog>
 
-      {/* Upload Modal */}
-      {showUploadModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
-          <div className="w-full max-w-md rounded-lg bg-white p-6">
-            <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-lg font-semibold">Upload PDF</h2>
-              <button
-                onClick={() => setShowUploadModal(false)}
-                className="rounded p-1 hover:bg-gray-100"
-              >
-                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M6 18L18 6M6 6l12 12"
-                  />
-                </svg>
-              </button>
-            </div>
-            <FileUploader onUploadComplete={handleUploadComplete} />
-          </div>
-        </div>
-      )}
-
       {/* Main Content */}
       <main className="flex-1 overflow-hidden">{children}</main>
+
+      {/* Delete Document Dialog */}
+      {deleteDialogDoc && (
+        <DeleteDocumentDialog
+          documentId={deleteDialogDoc.id}
+          documentTitle={deleteDialogDoc.title}
+          isCurrentDocument={selectedDocId === deleteDialogDoc.id}
+          open={!!deleteDialogDoc}
+          onOpenChange={(open) => {
+            if (!open) setDeleteDialogDoc(null);
+          }}
+          onDelete={() => setDeleteDialogDoc(null)}
+        />
+      )}
     </div>
   );
 }
