@@ -306,7 +306,7 @@ export function ChatPanel({ documentId, currentPage }: ChatPanelProps) {
                 }
               }}
               placeholder="Ask anything about this document..."
-              className="placeholder:text-muted-foreground flex-1 resize-none border-0 bg-transparent px-0 py-1 text-sm outline-none"
+              className="placeholder:text-muted-foreground/50 flex-1 resize-none border-0 bg-transparent px-0 py-1 text-sm outline-none"
               rows={1}
               style={{
                 minHeight: "24px",

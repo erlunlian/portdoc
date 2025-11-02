@@ -27,7 +27,7 @@ interface Selection {
   pageNumber: number;
 }
 
-const ZOOM_LEVELS = [0.5, 0.75, 1, 1.25, 1.5, 2];
+const ZOOM_LEVELS = [0.5, 0.75, 1, 1.25, 1.5, 2, 2.5, 3, 4, 5];
 const DEFAULT_ZOOM = 1;
 
 export function PdfViewer({
@@ -286,17 +286,19 @@ export function PdfViewer({
   }
 
   return (
-    <div className="flex h-full flex-col bg-gray-100">
+    <div className="flex h-full flex-col bg-gray-100 w-full">
       {/* Toolbar */}
-      <PdfToolbar
-        currentPage={pageNumber}
-        totalPages={numPages}
-        scale={scale}
-        onPageChange={handlePageChange}
-        onZoomIn={zoomIn}
-        onZoomOut={zoomOut}
-        onZoomChange={handleZoom}
-      />
+      <div className="w-full flex-shrink-0">
+        <PdfToolbar
+          currentPage={pageNumber}
+          totalPages={numPages}
+          scale={scale}
+          onPageChange={handlePageChange}
+          onZoomIn={zoomIn}
+          onZoomOut={zoomOut}
+          onZoomChange={handleZoom}
+        />
+      </div>
 
       {/* PDF Document Container */}
       <div

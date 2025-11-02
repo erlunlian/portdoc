@@ -28,6 +28,10 @@ const ZOOM_OPTIONS = [
   { value: 1.25, label: "125%" },
   { value: 1.5, label: "150%" },
   { value: 2, label: "200%" },
+  { value: 2.5, label: "250%" },
+  { value: 3, label: "300%" },
+  { value: 4, label: "400%" },
+  { value: 5, label: "500%" },
 ];
 
 export function PdfToolbar({
@@ -85,7 +89,7 @@ export function PdfToolbar({
     const containerWidth = window.innerWidth * 0.6; // Assuming PDF takes ~60% of screen
     const defaultPageWidth = 612; // Default PDF page width in points
     const newScale = containerWidth / defaultPageWidth;
-    onZoomChange(Math.min(2, Math.max(0.5, newScale)));
+    onZoomChange(Math.min(5, Math.max(0.5, newScale)));
   };
 
   const handleFitToPage = () => {
@@ -99,9 +103,9 @@ export function PdfToolbar({
   }
 
   return (
-    <div className="flex h-14 items-center justify-between border-b bg-white px-4 shadow-sm">
-      {/* Page Navigation */}
-      <div className="flex items-center gap-2">
+    <div className="flex h-14 items-center border-b bg-white px-4 shadow-sm w-full">
+      {/* Left Section: Page Navigation */}
+      <div className="flex items-center gap-2 flex-shrink-0">
         <button
           onClick={handlePreviousPage}
           disabled={currentPage <= 1}
@@ -144,72 +148,78 @@ export function PdfToolbar({
         </button>
       </div>
 
-      {/* Zoom Controls */}
-      <div className="flex items-center gap-2">
-        <button
-          onClick={onZoomOut}
-          disabled={scale <= 0.5}
-          className={cn(
-            "rounded-xl p-2 transition-colors",
-            scale <= 0.5
-              ? "cursor-not-allowed text-gray-300"
-              : "hover:bg-gray-100 text-gray-600"
-          )}
-          aria-label="Zoom out"
-        >
-          <ZoomOut className="h-5 w-5" />
-        </button>
+      {/* Center Section: Flexible Spacer */}
+      <div className="flex-1" />
 
-        <select
-          value={scale}
-          onChange={(e) => onZoomChange(parseFloat(e.target.value))}
-          className="rounded-xl border px-3 py-1 text-sm focus:border-blue-500 focus:outline-none"
-        >
-          {ZOOM_OPTIONS.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
+      {/* Right Section: Zoom Controls and Shortcuts */}
+      <div className="flex items-center gap-4 flex-shrink-0">
+        {/* Zoom Controls */}
+        <div className="flex items-center gap-2">
+          <button
+            onClick={onZoomOut}
+            disabled={scale <= 0.5}
+            className={cn(
+              "rounded-xl p-2 transition-colors",
+              scale <= 0.5
+                ? "cursor-not-allowed text-gray-300"
+                : "hover:bg-gray-100 text-gray-600"
+            )}
+            aria-label="Zoom out"
+          >
+            <ZoomOut className="h-5 w-5" />
+          </button>
 
-        <button
-          onClick={onZoomIn}
-          disabled={scale >= 2}
-          className={cn(
-            "rounded-xl p-2 transition-colors",
-            scale >= 2
-              ? "cursor-not-allowed text-gray-300"
-              : "hover:bg-gray-100 text-gray-600"
-          )}
-          aria-label="Zoom in"
-        >
-          <ZoomIn className="h-5 w-5" />
-        </button>
+          <select
+            value={scale}
+            onChange={(e) => onZoomChange(parseFloat(e.target.value))}
+            className="rounded-xl border px-3 py-1 text-sm focus:border-blue-500 focus:outline-none"
+          >
+            {ZOOM_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
 
-        <div className="ml-2 h-6 w-px bg-gray-300" />
+          <button
+            onClick={onZoomIn}
+            disabled={scale >= 5}
+            className={cn(
+              "rounded-xl p-2 transition-colors",
+              scale >= 5
+                ? "cursor-not-allowed text-gray-300"
+                : "hover:bg-gray-100 text-gray-600"
+            )}
+            aria-label="Zoom in"
+          >
+            <ZoomIn className="h-5 w-5" />
+          </button>
 
-        <button
-          onClick={handleFitToWidth}
-          className="rounded-xl p-2 text-gray-600 transition-colors hover:bg-gray-100"
-          aria-label="Fit to width"
-          title="Fit to width"
-        >
-          <Maximize2 className="h-5 w-5" />
-        </button>
+          <div className="ml-2 h-6 w-px bg-gray-300" />
 
-        <button
-          onClick={handleFitToPage}
-          className="rounded-xl p-2 text-gray-600 transition-colors hover:bg-gray-100"
-          aria-label="Fit to page"
-          title="Fit to page"
-        >
-          <FileText className="h-5 w-5" />
-        </button>
-      </div>
+          <button
+            onClick={handleFitToWidth}
+            className="rounded-xl p-2 text-gray-600 transition-colors hover:bg-gray-100"
+            aria-label="Fit to width"
+            title="Fit to width"
+          >
+            <Maximize2 className="h-5 w-5" />
+          </button>
 
-      {/* Keyboard Shortcuts Info */}
-      <div className="text-xs text-gray-400">
-        <span>Ctrl/⌘ + to zoom</span>
+          <button
+            onClick={handleFitToPage}
+            className="rounded-xl p-2 text-gray-600 transition-colors hover:bg-gray-100"
+            aria-label="Fit to page"
+            title="Fit to page"
+          >
+            <FileText className="h-5 w-5" />
+          </button>
+        </div>
+
+        {/* Keyboard Shortcuts Info */}
+        <div className="text-xs text-gray-400">
+          <span>Ctrl/⌘ + to zoom</span>
+        </div>
       </div>
     </div>
   );
