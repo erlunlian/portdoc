@@ -6,8 +6,6 @@ import {
   ChevronRight,
   ZoomIn,
   ZoomOut,
-  Maximize2,
-  FileText,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -82,19 +80,6 @@ export function PdfToolbar({
       onPageChange(currentPage + 1);
       setPageInput((currentPage + 1).toString());
     }
-  };
-
-  const handleFitToWidth = () => {
-    // Calculate scale to fit width (approximate)
-    const containerWidth = window.innerWidth * 0.6; // Assuming PDF takes ~60% of screen
-    const defaultPageWidth = 612; // Default PDF page width in points
-    const newScale = containerWidth / defaultPageWidth;
-    onZoomChange(Math.min(5, Math.max(0.5, newScale)));
-  };
-
-  const handleFitToPage = () => {
-    // Reset to default zoom
-    onZoomChange(1);
   };
 
   // Update page input when currentPage changes externally
@@ -193,26 +178,6 @@ export function PdfToolbar({
             aria-label="Zoom in"
           >
             <ZoomIn className="h-5 w-5" />
-          </button>
-
-          <div className="ml-2 h-6 w-px bg-gray-300" />
-
-          <button
-            onClick={handleFitToWidth}
-            className="rounded-xl p-2 text-gray-600 transition-colors hover:bg-gray-100"
-            aria-label="Fit to width"
-            title="Fit to width"
-          >
-            <Maximize2 className="h-5 w-5" />
-          </button>
-
-          <button
-            onClick={handleFitToPage}
-            className="rounded-xl p-2 text-gray-600 transition-colors hover:bg-gray-100"
-            aria-label="Fit to page"
-            title="Fit to page"
-          >
-            <FileText className="h-5 w-5" />
           </button>
         </div>
 

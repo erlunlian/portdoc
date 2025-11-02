@@ -5,6 +5,7 @@ import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/componen
 import { apiClient } from "@/lib/api/client";
 import { createClient } from "@/lib/supabase/client";
 import { debounce } from "@/lib/utils";
+import { pdfStateManager } from "@/lib/pdf-state";
 import type { Document, DocumentReadState } from "@/types/api";
 import { useQuery } from "@tanstack/react-query";
 import { useParams } from "next/navigation";
@@ -18,6 +19,7 @@ export default function DocumentPage() {
   const documentId = params.id as string;
   const [currentPage, setCurrentPage] = useState(1);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+  const [hasInitialized, setHasInitialized] = useState(false);
 
   // Fetch document with auto-refresh while processing
   const { data: document, isLoading: docLoading } = useQuery<Document>({
@@ -40,12 +42,26 @@ export default function DocumentPage() {
     enabled: !!documentId,
   });
 
-  // Set initial page from read state
+  // Set initial page from localStorage or read state
   useEffect(() => {
-    if (readState?.last_page) {
+    if (hasInitialized) return;
+    
+    // First try to get from localStorage (faster)
+    const cachedPage = pdfStateManager.getPageNumber(documentId);
+    if (cachedPage) {
+      setCurrentPage(cachedPage);
+      setHasInitialized(true);
+    } else if (readState?.last_page) {
+      // Fall back to server state
       setCurrentPage(readState.last_page);
+      setHasInitialized(true);
     }
-  }, [readState]);
+  }, [documentId, readState, hasInitialized]);
+
+  // Clean up old localStorage entries on mount
+  useEffect(() => {
+    pdfStateManager.cleanupOldStates();
+  }, []);
 
   // Get PDF URL from Supabase Storage
   useEffect(() => {
@@ -79,9 +95,12 @@ export default function DocumentPage() {
   const handlePageChange = useCallback(
     (page: number) => {
       setCurrentPage(page);
+      // Save to localStorage immediately for fast access
+      pdfStateManager.savePageNumber(documentId, page);
+      // Also update server state (debounced)
       updateReadState(page);
     },
-    [updateReadState]
+    [documentId, updateReadState]
   );
 
   // Listen for page jump events from highlight list

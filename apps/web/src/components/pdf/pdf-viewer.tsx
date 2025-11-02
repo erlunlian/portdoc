@@ -9,6 +9,7 @@ import { PdfContextMenu } from "./pdf-context-menu";
 import { PdfToolbar } from "./pdf-toolbar";
 import { cn } from "@/lib/utils";
 import { debounce } from "@/lib/utils";
+import { pdfStateManager } from "@/lib/pdf-state";
 
 // Configure PDF.js worker
 pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`;
@@ -39,7 +40,11 @@ export function PdfViewer({
 }: PdfViewerProps) {
   const [numPages, setNumPages] = useState<number>(totalPages);
   const [pageNumber, setPageNumber] = useState<number>(currentPage);
-  const [scale, setScale] = useState<number>(DEFAULT_ZOOM);
+  // Initialize scale from localStorage or default
+  const [scale, setScale] = useState<number>(() => {
+    const savedScale = pdfStateManager.getScale(documentId);
+    return savedScale || DEFAULT_ZOOM;
+  });
   const [isSelecting, setIsSelecting] = useState(false);
   const [selection, setSelection] = useState<Selection | null>(null);
   const [selectionRect, setSelectionRect] = useState<{
@@ -49,7 +54,6 @@ export function PdfViewer({
     height: number;
   } | null>(null);
   const [renderError, setRenderError] = useState<Error | null>(null);
-  const [pageWidth, setPageWidth] = useState<number>(800);
   
   const containerRef = useRef<HTMLDivElement>(null);
   const documentRef = useRef<HTMLDivElement>(null);
@@ -176,21 +180,27 @@ export function PdfViewer({
   // Handle zoom
   const handleZoom = useCallback((newScale: number) => {
     setScale(newScale);
-  }, []);
+    // Save zoom preference to localStorage
+    pdfStateManager.saveScale(documentId, newScale);
+  }, [documentId]);
 
   const zoomIn = useCallback(() => {
     const currentIndex = ZOOM_LEVELS.findIndex((level) => level === scale);
     if (currentIndex < ZOOM_LEVELS.length - 1) {
-      setScale(ZOOM_LEVELS[currentIndex + 1]);
+      const newScale = ZOOM_LEVELS[currentIndex + 1];
+      setScale(newScale);
+      pdfStateManager.saveScale(documentId, newScale);
     }
-  }, [scale]);
+  }, [scale, documentId]);
 
   const zoomOut = useCallback(() => {
     const currentIndex = ZOOM_LEVELS.findIndex((level) => level === scale);
     if (currentIndex > 0) {
-      setScale(ZOOM_LEVELS[currentIndex - 1]);
+      const newScale = ZOOM_LEVELS[currentIndex - 1];
+      setScale(newScale);
+      pdfStateManager.saveScale(documentId, newScale);
     }
-  }, [scale]);
+  }, [scale, documentId]);
 
   // Handle text selection
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
@@ -334,11 +344,6 @@ export function PdfViewer({
                     "bg-white",
                     index + 1 === pageNumber && "ring-2 ring-blue-500 ring-offset-2"
                   )}
-                  onLoadSuccess={(page) => {
-                    if (index === 0) {
-                      setPageWidth(page.width);
-                    }
-                  }}
                 />
                 
                 {/* Highlight Overlay for this page */}
