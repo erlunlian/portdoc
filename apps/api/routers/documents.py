@@ -38,6 +38,7 @@ ingestion_service = IngestionService()
 
 @router.post("/documents/upload", response_model=UploadURLResponse)
 async def upload_document(
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     title: str | None = Form(None),
     current_user: User = Depends(get_current_user),
@@ -86,6 +87,27 @@ async def upload_document(
             user_id=str(current_user.id),
             filename=original_filename,
         )
+
+        # Automatically trigger ingestion in the background
+        async def ingest_uploaded_document(doc_id: UUID):
+            """Background task to automatically ingest the uploaded document"""
+            try:
+                logger.info("Starting automatic ingestion for uploaded document", document_id=str(doc_id))
+                result = await ingestion_service.ingest_document(doc_id, None)
+                if result:
+                    logger.info("Automatic ingestion completed successfully", document_id=str(doc_id))
+                else:
+                    logger.error("Automatic ingestion failed", document_id=str(doc_id))
+            except Exception as e:
+                logger.error(
+                    "Error during automatic ingestion",
+                    document_id=str(doc_id),
+                    error=str(e),
+                    exc_info=e,
+                )
+
+        background_tasks.add_task(ingest_uploaded_document, document_id)
+        logger.info("Queued document for automatic ingestion", document_id=str(document_id))
 
         return UploadURLResponse(
             document_id=document_id,

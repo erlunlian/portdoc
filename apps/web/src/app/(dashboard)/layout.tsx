@@ -77,6 +77,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         documents: Document[];
         total: number;
       }>,
+    // Refetch every 3 seconds if any document is processing
+    refetchInterval: (query) => {
+      const hasProcessing = query.state.data?.documents?.some(
+        (doc: Document) => doc.status === "processing" || doc.status === "uploaded"
+      );
+      return hasProcessing ? 3000 : false;
+    },
   });
 
   const documents = data?.documents || [];
