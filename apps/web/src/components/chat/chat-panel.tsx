@@ -19,6 +19,7 @@ export function ChatPanel({ documentId, currentPage }: ChatPanelProps) {
   const [streamingMessage, setStreamingMessage] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
   const [showArchive, setShowArchive] = useState(false);
+  const [localMessages, setLocalMessages] = useState<Message[]>([]);
   const queryClient = useQueryClient();
 
   // Fetch threads
@@ -42,6 +43,12 @@ export function ChatPanel({ documentId, currentPage }: ChatPanelProps) {
     }
   }, [threads, selectedThreadId, documentId]);
 
+  // Clear local messages when switching threads
+  useEffect(() => {
+    setLocalMessages([]);
+    setStreamingMessage("");
+  }, [selectedThreadId]);
+
   // Fetch messages for selected thread
   const { data: messagesData } = useQuery<{ messages: Message[]; total: number }>({
     queryKey: ["messages", selectedThreadId],
@@ -51,6 +58,13 @@ export function ChatPanel({ documentId, currentPage }: ChatPanelProps) {
   });
 
   const messages = messagesData?.messages || [];
+
+  // Sync local messages with fetched messages
+  useEffect(() => {
+    if (messages.length > 0 && !isStreaming) {
+      setLocalMessages(messages);
+    }
+  }, [messages, isStreaming]);
 
   // Listen for "Add to Chat" events from PDF context menu
   useEffect(() => {
@@ -79,6 +93,19 @@ export function ChatPanel({ documentId, currentPage }: ChatPanelProps) {
     setInput("");
     setIsStreaming(true);
     setStreamingMessage("");
+
+    // Add user message optimistically
+    const userMessage: Message = {
+      id: `temp-${Date.now()}`,
+      thread_id: selectedThreadId,
+      role: "user",
+      content: messageText,
+      tokens_prompt: null,
+      tokens_completion: null,
+      metadata: null,
+      created_at: new Date().toISOString(),
+    };
+    setLocalMessages(prev => [...prev, userMessage]);
 
     try {
       // Get auth token
@@ -131,15 +158,35 @@ export function ChatPanel({ documentId, currentPage }: ChatPanelProps) {
                 fullMessage += data.content || "";
                 setStreamingMessage(fullMessage);
               } else if (data.type === "done") {
+                // Add assistant message to local messages
+                const assistantMessage: Message = {
+                  id: `temp-assistant-${Date.now()}`,
+                  thread_id: selectedThreadId,
+                  role: "assistant",
+                  content: fullMessage,
+                  tokens_prompt: null,
+                  tokens_completion: null,
+                  metadata: data.metadata || null,
+                  created_at: new Date().toISOString(),
+                };
+                setLocalMessages(prev => [...prev, assistantMessage]);
+                
                 setIsStreaming(false);
                 setStreamingMessage("");
-                queryClient.invalidateQueries({
-                  queryKey: ["messages", selectedThreadId],
-                });
+                
+                // Refresh messages from database after a short delay
+                setTimeout(() => {
+                  queryClient.invalidateQueries({
+                    queryKey: ["messages", selectedThreadId],
+                  });
+                }, 500);
                 return;
               } else if (data.type === "error") {
+                // Remove the optimistic user message on error
+                setLocalMessages(prev => prev.slice(0, -1));
                 setIsStreaming(false);
                 setStreamingMessage("");
+                console.error("Chat error:", data.content);
                 alert(`Error: ${data.content}`);
                 return;
               }
@@ -159,6 +206,7 @@ export function ChatPanel({ documentId, currentPage }: ChatPanelProps) {
   const handleCreateThread = async () => {
     const thread = await apiClient.createThread(documentId, "New Chat");
     setSelectedThreadId((thread as Thread).id);
+    setLocalMessages([]); // Clear messages for new thread
     queryClient.invalidateQueries({ queryKey: ["threads", documentId] });
   };
 
@@ -176,7 +224,7 @@ export function ChatPanel({ documentId, currentPage }: ChatPanelProps) {
 
       {/* Messages */}
       <MessageList
-        messages={messages}
+        messages={localMessages.length > 0 ? localMessages : messages}
         streamingMessage={streamingMessage}
         isStreaming={isStreaming}
       />

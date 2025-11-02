@@ -38,6 +38,60 @@ class RAGService:
             logger.info("Using OpenAI for chat", model=self.model)
 
         self.embedding = EmbeddingService()
+    
+    async def validate_llm_connection(self) -> None:
+        """
+        Validate that we can connect to the LLM with the current configuration.
+        Raises an exception if the connection or parameters are invalid.
+        """
+        try:
+            # Test with a minimal request to validate parameters
+            test_messages = [
+                {"role": "system", "content": "Test"},
+                {"role": "user", "content": "Hi"}
+            ]
+            
+            # Try the same parameter combinations we use in actual requests
+            base_params = {
+                "model": self.model,
+                "messages": test_messages,
+                "stream": False,
+                "max_tokens": 10,  # Minimal tokens for testing
+            }
+            
+            # Try different parameter combinations
+            param_combinations = [
+                {"max_completion_tokens": 10, "temperature": 0.7},
+                {"max_completion_tokens": 10},
+                {"max_tokens": 10, "temperature": 0.7},
+                {"max_tokens": 10},
+            ]
+            
+            success = False
+            last_error = None
+            
+            for params in param_combinations:
+                try:
+                    # Remove duplicate max_tokens if max_completion_tokens is present
+                    test_params = {**base_params}
+                    if "max_completion_tokens" in params:
+                        test_params.pop("max_tokens", None)
+                    test_params.update(params)
+                    
+                    await self.client.chat.completions.create(**test_params)
+                    success = True
+                    logger.info(f"LLM validation successful with params: {params}")
+                    break
+                except Exception as e:
+                    last_error = e
+                    continue
+            
+            if not success:
+                raise Exception(f"LLM configuration invalid: {str(last_error)}")
+                
+        except Exception as e:
+            logger.error(f"LLM validation failed: {str(e)}")
+            raise
 
     async def retrieve_chunks(
         self,
@@ -123,6 +177,7 @@ Guidelines:
         """
         Generate streaming response from LLM with RAG
         Yields tokens as they are generated
+        Note: User message should already be saved in the database before calling this
         """
         start_time = time.time()
 
@@ -133,50 +188,102 @@ Guidelines:
             # Build messages for API
             messages = [{"role": "system", "content": system_prompt}]
 
-            # Add recent message history (last 10 messages)
-            for msg in message_history[-10:]:
-                messages.append(
-                    {
-                        "role": msg.role.value.lower(),
-                        "content": msg.content,
-                    }
-                )
+            # Add recent message history (excluding the last message which is the current user message we just saved)
+            # We want the last 10 messages before the current one
+            if len(message_history) > 0:
+                # The last message in history is the user message we just saved, so exclude it
+                history_to_include = message_history[:-1] if message_history else []
+                # Take the last 10 messages from the remaining history
+                for msg in history_to_include[-10:]:
+                    messages.append(
+                        {
+                            "role": msg.role.value.lower(),
+                            "content": msg.content,
+                        }
+                    )
 
             # Add current user message
             messages.append({"role": "user", "content": user_message})
 
             # Call LLM API with streaming
-            stream = await self.client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                stream=True,
-                temperature=0.7,
-                max_tokens=1500,
-            )
+            try:
+                # Build base parameters
+                base_params = {
+                    "model": self.model,
+                    "messages": messages,
+                    "stream": True,
+                }
+                
+                # Try different parameter combinations based on model capabilities
+                stream = None
+                last_error = None
+                
+                # Try combinations: (max_completion_tokens + temperature), (max_completion_tokens + no temp),
+                # (max_tokens + temperature), (max_tokens + no temp)
+                param_combinations = [
+                    {"max_completion_tokens": 1500, "temperature": 0.7},
+                    {"max_completion_tokens": 1500},  # Default temperature
+                    {"max_tokens": 1500, "temperature": 0.7},
+                    {"max_tokens": 1500},  # Default temperature
+                ]
+                
+                for params in param_combinations:
+                    try:
+                        stream = await self.client.chat.completions.create(
+                            **base_params,
+                            **params
+                        )
+                        logger.info(f"LLM API call successful with params: {params}")
+                        break  # Success, exit loop
+                    except Exception as e:
+                        last_error = e
+                        error_str = str(e)
+                        logger.debug(f"LLM API attempt failed with params {params}: {error_str}")
+                        continue
+                
+                if stream is None:
+                    # All attempts failed
+                    error_msg = f"All LLM API attempts failed. Last error: {last_error}"
+                    logger.error(error_msg, thread_id=str(thread_id), model=self.model)
+                    raise Exception(error_msg)
+                    
+            except Exception as e:
+                # Log the error with full context
+                logger.error(
+                    "Failed to create LLM stream",
+                    error=str(e),
+                    thread_id=str(thread_id),
+                    model=self.model,
+                    message_count=len(messages),
+                    exc_info=True  # This will log the full stack trace
+                )
+                # Re-raise with a clean error message
+                raise Exception(f"LLM API error: {str(e)}")
 
             # Stream tokens
             full_response = ""
-            async for chunk in stream:
-                if chunk.choices[0].delta.content:
-                    token = chunk.choices[0].delta.content
-                    full_response += token
-                    yield token
+            try:
+                async for chunk in stream:
+                    if chunk.choices and len(chunk.choices) > 0 and chunk.choices[0].delta.content:
+                        token = chunk.choices[0].delta.content
+                        full_response += token
+                        yield token
+            except Exception as e:
+                logger.error(
+                    "Error during streaming",
+                    error=str(e),
+                    thread_id=str(thread_id),
+                    response_length=len(full_response),
+                    exc_info=True
+                )
+                raise Exception(f"Streaming error: {str(e)}")
 
             # Calculate metrics
             latency_ms = (time.time() - start_time) * 1000
             tokens_prompt = sum(len(m["content"]) // 4 for m in messages)  # Rough estimate
             tokens_completion = len(full_response) // 4  # Rough estimate
 
-            # Save user message
-            user_msg = Message(
-                thread_id=thread_id,
-                role=MessageRole.USER,
-                content=user_message,
-                tokens_prompt=tokens_prompt,
-            )
-            db.add(user_msg)
-
-            # Save assistant message with metadata
+            # Save assistant message with metadata (user message already saved)
             chunk_ids = [chunk["chunk_id"] for chunk in chunks]
             pages = sorted(set(chunk["page"] for chunk in chunks))
 
@@ -185,7 +292,7 @@ Guidelines:
                 role=MessageRole.ASSISTANT,
                 content=full_response,
                 tokens_completion=tokens_completion,
-                metadata={"chunk_ids": chunk_ids, "pages": pages},
+                message_metadata={"chunk_ids": chunk_ids, "pages": pages},
             )
             db.add(assistant_msg)
 

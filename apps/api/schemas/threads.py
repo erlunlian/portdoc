@@ -53,11 +53,12 @@ class MessageResponse(BaseModel):
     content: str
     tokens_prompt: Optional[int] = None
     tokens_completion: Optional[int] = None
-    metadata: Optional[dict] = None
+    metadata: Optional[dict] = Field(None, alias="message_metadata")
     created_at: datetime
 
     class Config:
         from_attributes = True
+        populate_by_name = True
 
 
 class MessageListResponse(BaseModel):

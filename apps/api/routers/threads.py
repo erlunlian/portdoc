@@ -10,7 +10,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.base import get_db
-from db.models import Document, Message, Thread, User
+from db.models import Document, Message, MessageRole, Thread, User
 from schemas.threads import (
     MessageCreate,
     MessageListResponse,
@@ -199,6 +199,17 @@ async def stream_response(
 
     if not thread:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Thread not found")
+    
+    # Save user message immediately
+    user_msg = Message(
+        thread_id=thread.id,
+        role=MessageRole.USER,
+        content=query,
+        tokens_prompt=len(query) // 4,  # Rough estimate
+    )
+    db.add(user_msg)
+    await db.commit()
+    await db.refresh(user_msg)
 
     # Get message history
     history_result = await db.execute(
@@ -223,6 +234,17 @@ async def stream_response(
 
     if not chunks:
         logger.warning("No chunks retrieved for query", thread_id=str(thread_id))
+    
+    # Validate LLM connection before starting SSE stream
+    # This ensures we return proper HTTP errors if the LLM is misconfigured
+    try:
+        await rag_service.validate_llm_connection()
+    except Exception as e:
+        logger.error(f"LLM validation failed: {str(e)}", thread_id=str(thread_id))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to connect to language model: {str(e)}"
+        )
 
     async def event_generator():
         """Generate SSE events"""
@@ -230,6 +252,10 @@ async def stream_response(
             # Send start event
             yield f"data: {json.dumps({'type': 'start'})}\n\n"
 
+            # Collect the full response first to catch any errors before streaming
+            full_response = ""
+            pages = []
+            
             # Stream tokens from LLM
             async for token in rag_service.generate_response(
                 thread_id=thread.id,
@@ -238,6 +264,7 @@ async def stream_response(
                 message_history=message_history,
                 db=db,
             ):
+                full_response += token
                 yield f"data: {json.dumps({'type': 'token', 'content': token})}\n\n"
 
             # Send done event with metadata
@@ -245,8 +272,10 @@ async def stream_response(
             yield f"data: {json.dumps({'type': 'done', 'metadata': {'pages': pages}})}\n\n"
 
         except Exception as e:
-            logger.error("Streaming error", error=str(e), thread_id=str(thread_id))
-            yield f"data: {json.dumps({'type': 'error', 'content': str(e)})}\n\n"
+            logger.error("Streaming error", error=str(e), thread_id=str(thread_id), exc_info=True)
+            # Send error event to client
+            error_message = f"Failed to generate response: {str(e)}"
+            yield f"data: {json.dumps({'type': 'error', 'content': error_message})}\n\n"
 
     return StreamingResponse(
         event_generator(),
