@@ -5,7 +5,6 @@ import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/componen
 import { apiClient } from "@/lib/api/client";
 import { createClient } from "@/lib/supabase/client";
 import { debounce } from "@/lib/utils";
-import { pdfStateManager } from "@/lib/pdf-state";
 import type { Document, DocumentReadState } from "@/types/api";
 import { useQuery } from "@tanstack/react-query";
 import { useParams } from "next/navigation";
@@ -42,26 +41,15 @@ export default function DocumentPage() {
     enabled: !!documentId,
   });
 
-  // Set initial page from localStorage or read state
+  // Set initial page from read state
   useEffect(() => {
-    if (hasInitialized) return;
+    if (hasInitialized || !readState) return;
     
-    // First try to get from localStorage (faster)
-    const cachedPage = pdfStateManager.getPageNumber(documentId);
-    if (cachedPage) {
-      setCurrentPage(cachedPage);
-      setHasInitialized(true);
-    } else if (readState?.last_page) {
-      // Fall back to server state
+    if (readState.last_page) {
       setCurrentPage(readState.last_page);
       setHasInitialized(true);
     }
-  }, [documentId, readState, hasInitialized]);
-
-  // Clean up old localStorage entries on mount
-  useEffect(() => {
-    pdfStateManager.cleanupOldStates();
-  }, []);
+  }, [readState, hasInitialized]);
 
   // Get PDF URL from Supabase Storage
   useEffect(() => {
@@ -82,10 +70,15 @@ export default function DocumentPage() {
   }, [document]);
 
   // Debounced update of read state
-  const updateReadState = debounce(async (page: number) => {
-    if (!documentId) return;
+  const updateReadState = debounce(async (page: number, scale?: number) => {
+    if (!documentId || !readState) return;
     try {
-      await apiClient.updateReadState(documentId, page, false);
+      await apiClient.updateReadState(
+        documentId, 
+        page, 
+        scale !== undefined ? scale : readState.scale,
+        false
+      );
     } catch (error) {
       console.error("Failed to update read state:", error);
     }
@@ -95,12 +88,19 @@ export default function DocumentPage() {
   const handlePageChange = useCallback(
     (page: number) => {
       setCurrentPage(page);
-      // Save to localStorage immediately for fast access
-      pdfStateManager.savePageNumber(documentId, page);
-      // Also update server state (debounced)
+      // Update server state (debounced)
       updateReadState(page);
     },
-    [documentId, updateReadState]
+    [updateReadState]
+  );
+
+  // Handle scale change
+  const handleScaleChange = useCallback(
+    (scale: number) => {
+      // Update server state with new scale (debounced)
+      updateReadState(currentPage, scale);
+    },
+    [currentPage, updateReadState]
   );
 
   // Listen for page jump events from highlight list
@@ -138,6 +138,8 @@ export default function DocumentPage() {
                 onPageChange={handlePageChange}
                 totalPages={document.pages || 1}
                 documentId={documentId}
+                initialScale={readState?.scale || undefined}
+                onScaleChange={handleScaleChange}
               />
             ) : (
               <div className="flex h-full items-center justify-center">

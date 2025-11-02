@@ -318,11 +318,13 @@ async def update_read_state(
             user_id=current_user.id,
             document_id=document.id,
             last_page=update.last_page,
+            scale=update.scale,
             is_read=update.is_read,
         )
         db.add(read_state)
     else:
         read_state.last_page = update.last_page
+        read_state.scale = update.scale
         read_state.is_read = update.is_read
 
     await db.commit()

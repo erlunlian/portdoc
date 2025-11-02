@@ -74,7 +74,7 @@ export function DeleteDocumentDialog({
         <AlertDialogHeader>
           <AlertDialogTitle>Delete Document</AlertDialogTitle>
           <AlertDialogDescription>
-            Are you sure you want to delete "{documentTitle}"? This action cannot be undone.
+            Are you sure you want to delete &ldquo;{documentTitle}&rdquo;? This action cannot be undone.
             <br />
             <br />
             This will permanently delete:

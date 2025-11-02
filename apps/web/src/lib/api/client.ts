@@ -90,10 +90,14 @@ export class APIClient {
     return this.request(`/documents/${documentId}/read-state`);
   }
 
-  async updateReadState(documentId: string, lastPage: number, isRead: boolean) {
+  async updateReadState(documentId: string, lastPage: number, scale: number | null | undefined, isRead: boolean) {
     return this.request(`/documents/${documentId}/read-state`, {
       method: "PUT",
-      body: JSON.stringify({ last_page: lastPage, is_read: isRead }),
+      body: JSON.stringify({ 
+        last_page: lastPage, 
+        scale: scale,
+        is_read: isRead 
+      }),
     });
   }
 

@@ -17,6 +17,7 @@ export interface DocumentReadState {
   user_id: string;
   document_id: string;
   last_page: number;
+  scale: number | null;
   is_read: boolean;
   updated_at: string;
 }

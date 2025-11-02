@@ -113,6 +113,7 @@ class DocumentReadState(Base):
         ForeignKey("documents.id", ondelete="CASCADE"), nullable=False
     )
     last_page: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    scale: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     is_read: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now(), onupdate=func.now()

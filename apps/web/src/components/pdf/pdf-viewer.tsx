@@ -9,7 +9,6 @@ import { PdfContextMenu } from "./pdf-context-menu";
 import { PdfToolbar } from "./pdf-toolbar";
 import { cn } from "@/lib/utils";
 import { debounce } from "@/lib/utils";
-import { pdfStateManager } from "@/lib/pdf-state";
 
 // Configure PDF.js worker
 pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`;
@@ -20,6 +19,8 @@ interface PdfViewerProps {
   onPageChange: (page: number) => void;
   totalPages: number;
   documentId: string;
+  initialScale?: number;
+  onScaleChange?: (scale: number) => void;
 }
 
 interface Selection {
@@ -37,14 +38,13 @@ export function PdfViewer({
   onPageChange,
   totalPages,
   documentId,
+  initialScale,
+  onScaleChange,
 }: PdfViewerProps) {
   const [numPages, setNumPages] = useState<number>(totalPages);
   const [pageNumber, setPageNumber] = useState<number>(currentPage);
-  // Initialize scale from localStorage or default
-  const [scale, setScale] = useState<number>(() => {
-    const savedScale = pdfStateManager.getScale(documentId);
-    return savedScale || DEFAULT_ZOOM;
-  });
+  // Initialize scale from props or default
+  const [scale, setScale] = useState<number>(initialScale || DEFAULT_ZOOM);
   const [isSelecting, setIsSelecting] = useState(false);
   const [selection, setSelection] = useState<Selection | null>(null);
   const [selectionRect, setSelectionRect] = useState<{
@@ -180,27 +180,27 @@ export function PdfViewer({
   // Handle zoom
   const handleZoom = useCallback((newScale: number) => {
     setScale(newScale);
-    // Save zoom preference to localStorage
-    pdfStateManager.saveScale(documentId, newScale);
-  }, [documentId]);
+    // Notify parent of scale change
+    onScaleChange?.(newScale);
+  }, [onScaleChange]);
 
   const zoomIn = useCallback(() => {
     const currentIndex = ZOOM_LEVELS.findIndex((level) => level === scale);
     if (currentIndex < ZOOM_LEVELS.length - 1) {
       const newScale = ZOOM_LEVELS[currentIndex + 1];
       setScale(newScale);
-      pdfStateManager.saveScale(documentId, newScale);
+      onScaleChange?.(newScale);
     }
-  }, [scale, documentId]);
+  }, [scale, onScaleChange]);
 
   const zoomOut = useCallback(() => {
     const currentIndex = ZOOM_LEVELS.findIndex((level) => level === scale);
     if (currentIndex > 0) {
       const newScale = ZOOM_LEVELS[currentIndex - 1];
       setScale(newScale);
-      pdfStateManager.saveScale(documentId, newScale);
+      onScaleChange?.(newScale);
     }
-  }, [scale, documentId]);
+  }, [scale, onScaleChange]);
 
   // Handle text selection
   const handleMouseDown = useCallback((e: React.MouseEvent) => {

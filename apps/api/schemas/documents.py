@@ -44,6 +44,7 @@ class DocumentReadStateUpdate(BaseModel):
     """Schema for updating read state"""
 
     last_page: int = Field(..., ge=1)
+    scale: float | None = Field(None, ge=0.1, le=10.0)
     is_read: bool = False
 
 
@@ -54,6 +55,7 @@ class DocumentReadStateResponse(BaseModel):
     user_id: UUID
     document_id: UUID
     last_page: int
+    scale: float | None
     is_read: bool
     updated_at: datetime
 
