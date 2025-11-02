@@ -19,7 +19,7 @@ import { apiClient } from "@/lib/api/client";
 import { createClient } from "@/lib/supabase/client";
 import type { Document } from "@/types/api";
 import { useQuery } from "@tanstack/react-query";
-import { MoreVertical, Trash2 } from "lucide-react";
+import { LogOut, MoreVertical, Trash2 } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
@@ -27,16 +27,39 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const router = useRouter();
   const pathname = usePathname();
   const [isCollapsed, setIsCollapsed] = useState(false);
-  const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [showSearchCommand, setShowSearchCommand] = useState(false);
   const [deleteDialogDoc, setDeleteDialogDoc] = useState<Document | null>(null);
+  const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [userInitials, setUserInitials] = useState<string>("");
 
-  // Load collapsed state from localStorage
+  // Load collapsed state from localStorage and fetch user info
   useEffect(() => {
     const savedState = localStorage.getItem("sidebarCollapsed");
     if (savedState) {
       setIsCollapsed(JSON.parse(savedState));
     }
+
+    // Fetch user info
+    const fetchUser = async () => {
+      const supabase = createClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (user) {
+        setUserEmail(user.email || null);
+        // Generate initials from email
+        if (user.email) {
+          const parts = user.email.split("@")[0].split(".");
+          const initials = parts
+            .map((part) => part[0]?.toUpperCase() || "")
+            .filter(Boolean)
+            .slice(0, 2)
+            .join("");
+          setUserInitials(initials || user.email[0].toUpperCase());
+        }
+      }
+    };
+    fetchUser();
   }, []);
 
   // Save collapsed state to localStorage
@@ -75,39 +98,61 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       >
         {/* Header */}
         <div className="p-2">
-          <div className="mb-2 flex items-center justify-between px-2 pt-2">
+          <div
+            className={`mb-2 flex items-center ${isCollapsed ? "justify-center" : "justify-between"} pt-2`}
+          >
             <button
-              onClick={() => router.push("/")}
-              className={`flex items-center gap-2 rounded-lg transition-colors hover:bg-gray-100 ${
-                isCollapsed ? "p-1.5" : "p-1"
-              }`}
-              title="Go to homepage"
+              onClick={() => (isCollapsed ? setIsCollapsed(false) : router.push("/"))}
+              className={`group relative flex items-center rounded-lg transition-colors hover:bg-gray-100 ${isCollapsed ? "justify-center p-1.5" : "gap-2 px-3 py-1.5"}`}
+              title={isCollapsed ? "Expand sidebar" : "Go to homepage"}
             >
-              <div className="flex h-7 w-7 items-center justify-center rounded-full bg-black text-xs font-bold text-white">
+              <div
+                className={`flex h-7 w-7 items-center justify-center rounded-full bg-black text-xs font-bold text-white transition-opacity ${
+                  isCollapsed ? "group-hover:opacity-0 " : ""
+                }`}
+              >
                 P
               </div>
-              {!isCollapsed && <span className="text-sm font-semibold">PortDoc</span>}
+              {isCollapsed && (
+                <div className="absolute inset-0 flex items-center justify-center opacity-0 transition-opacity group-hover:opacity-100">
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={1.5}
+                      d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5"
+                    />
+                  </svg>
+                </div>
+              )}
+              <span
+                className={`text-sm font-semibold transition-all duration-300 ${isCollapsed ? "w-0 overflow-hidden opacity-0" : "opacity-100 delay-150"}`}
+              >
+                PortDoc
+              </span>
             </button>
-            <button
-              onClick={() => setIsCollapsed(!isCollapsed)}
-              className="rounded-lg p-1.5 transition-colors hover:bg-gray-100"
-              title={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-            >
-              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={1.5}
-                  d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5"
-                />
-              </svg>
-            </button>
+            {!isCollapsed && (
+              <button
+                onClick={() => setIsCollapsed(!isCollapsed)}
+                className="rounded-lg p-1.5 transition-colors hover:bg-gray-100"
+                title="Collapse sidebar"
+              >
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={1.5}
+                    d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5"
+                  />
+                </svg>
+              </button>
+            )}
           </div>
 
           {/* New Document Button */}
           <button
             onClick={() => router.push("/")}
-            className={`mb-1 flex w-full items-center ${isCollapsed ? "justify-center p-2" : "justify-start px-3 py-2"} gap-2 rounded-lg transition-colors hover:bg-gray-100`}
+            className={`mb-1 flex w-full items-center ${isCollapsed ? "justify-center px-2 py-2" : "justify-start px-3 py-2"} gap-2 rounded-lg transition-colors hover:bg-gray-100`}
             title="Upload new PDF"
           >
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -118,13 +163,17 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10"
               />
             </svg>
-            {!isCollapsed && <span className="text-sm">New document</span>}
+            <span
+              className={`text-sm transition-all duration-300 ${isCollapsed ? "absolute w-0 overflow-hidden opacity-0" : "opacity-100 delay-150"}`}
+            >
+              New document
+            </span>
           </button>
 
           {/* Search Button */}
           <button
             onClick={() => setShowSearchCommand(true)}
-            className={`flex w-full items-center ${isCollapsed ? "justify-center p-2" : "justify-start px-3 py-2"} gap-2 rounded-lg transition-colors hover:bg-gray-100`}
+            className={`flex w-full items-center ${isCollapsed ? "justify-center px-2 py-2" : "justify-start px-3 py-2"} gap-2 rounded-lg transition-colors hover:bg-gray-100`}
             title="Search documents"
           >
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -135,19 +184,23 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z"
               />
             </svg>
-            {!isCollapsed && <span className="text-sm">Search documents</span>}
+            <span
+              className={`text-sm transition-all duration-300 ${isCollapsed ? "absolute w-0 overflow-hidden opacity-0" : "opacity-100 delay-150"}`}
+            >
+              Search documents
+            </span>
           </button>
         </div>
 
         {/* PDF List */}
         <div className="flex-1 overflow-y-auto">
-          {!isCollapsed && (
-            <div className="px-4 py-2">
-              <h3 className="text-xs font-semibold uppercase tracking-wider text-gray-500">
-                Documents
-              </h3>
-            </div>
-          )}
+          <div
+            className={`px-4 py-2 transition-all duration-300 ${isCollapsed ? "h-0 overflow-hidden opacity-0" : "opacity-100 delay-150"}`}
+          >
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-gray-500">
+              Documents
+            </h3>
+          </div>
           {isLoading ? (
             <div className="space-y-1 p-4">
               {[...Array(5)].map((_, i) => (
@@ -156,8 +209,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             </div>
           ) : documents.length === 0 ? (
             <div className="p-4 text-center text-xs text-gray-500">No PDFs uploaded yet</div>
-          ) : (
-            <div className={`${isCollapsed ? "hidden" : "px-2"}`}>
+          ) : !isCollapsed ? (
+            <div className="px-2">
               {documents.map((doc) => (
                 <div
                   key={doc.id}
@@ -200,49 +253,39 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 </div>
               ))}
             </div>
-          )}
+          ) : null}
         </div>
 
         {/* Profile Section at Bottom */}
         <div className="border-t border-gray-200 p-2">
-          <div className="relative">
-            <button
-              onClick={() => setShowProfileMenu(!showProfileMenu)}
-              className={`flex w-full items-center ${isCollapsed ? "justify-center p-2" : "justify-start px-3 py-2"} gap-3 rounded-lg transition-colors hover:bg-gray-100`}
-              title="Profile menu"
-            >
-              <div className="flex h-7 w-7 items-center justify-center rounded-full bg-black text-xs font-medium text-white">
-                e
-              </div>
-              {!isCollapsed && (
-                <div className="flex-1 text-left">
-                  <div className="text-sm font-medium">erlun lian</div>
-                </div>
-              )}
-            </button>
-
-            {/* Profile Dropdown Menu */}
-            {showProfileMenu && (
-              <div
-                className={`absolute bottom-full mb-1 ${isCollapsed ? "left-full ml-2" : "left-2 right-2"} rounded-lg border border-gray-200 bg-white py-1 shadow-lg`}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                className={`flex w-full items-center ${isCollapsed ? "justify-center px-2 py-2" : "justify-start px-3 py-2"} gap-3 rounded-lg transition-colors hover:bg-gray-100`}
+                title="Profile menu"
               >
-                <button
-                  onClick={handleSignOut}
-                  className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100"
+                <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-black text-xs font-medium text-white">
+                  {userInitials}
+                </div>
+                <div
+                  className={`min-w-0 flex-1 text-left transition-all duration-300 ${isCollapsed ? "w-0 overflow-hidden opacity-0" : "opacity-100 delay-150"}`}
                 >
-                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={1.5}
-                      d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M12 9l-3 3m0 0l3 3m-3-3h12.75"
-                    />
-                  </svg>
-                  Sign out
-                </button>
-              </div>
-            )}
-          </div>
+                  {userEmail && <div className="truncate text-sm text-gray-900">{userEmail}</div>}
+                </div>
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              align={isCollapsed ? "start" : "end"}
+              side="top"
+              sideOffset={5}
+              className="w-56"
+            >
+              <DropdownMenuItem onClick={handleSignOut} className="cursor-pointer">
+                <LogOut className="mr-2 h-4 w-4" />
+                Sign out
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </aside>
 
