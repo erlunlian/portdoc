@@ -8,12 +8,11 @@ import { createClient } from "@/lib/supabase/client";
 import { debounce } from "@/lib/utils";
 import type { Document, DocumentReadState } from "@/types/api";
 import { useQuery } from "@tanstack/react-query";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
 export default function DocumentPage() {
   const params = useParams();
-  const router = useRouter();
   const documentId = params.id as string;
   const [currentPage, setCurrentPage] = useState(1);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
@@ -131,12 +130,6 @@ export default function DocumentPage() {
               )}
             </div>
           </div>
-          <button
-            onClick={() => router.push("/")}
-            className="rounded-md bg-gray-100 px-4 py-2 text-sm font-medium hover:bg-gray-200"
-          >
-            Back to Library
-          </button>
         </div>
       </div>
 
