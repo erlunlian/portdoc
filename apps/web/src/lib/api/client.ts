@@ -33,6 +33,11 @@ export class APIClient {
       throw new Error(error.detail || `HTTP ${response.status}`);
     }
 
+    // Handle 204 No Content responses
+    if (response.status === 204) {
+      return {} as T;
+    }
+
     return response.json();
   }
 
