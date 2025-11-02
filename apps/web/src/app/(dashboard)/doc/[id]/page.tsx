@@ -3,11 +3,14 @@
 import { ChatPanel } from "@/components/chat/chat-panel";
 import { HighlightList } from "@/components/highlights/highlight-list";
 import { PdfViewer } from "@/components/pdf/pdf-viewer";
+import { Button } from "@/components/ui/button";
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { apiClient } from "@/lib/api/client";
 import { createClient } from "@/lib/supabase/client";
-import { debounce } from "@/lib/utils";
+import { cn, debounce } from "@/lib/utils";
 import type { Document, DocumentReadState } from "@/types/api";
 import { useQuery } from "@tanstack/react-query";
+import { Highlighter, MessageSquare } from "lucide-react";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
@@ -16,7 +19,7 @@ export default function DocumentPage() {
   const documentId = params.id as string;
   const [currentPage, setCurrentPage] = useState(1);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"chat" | "highlights">("chat");
+  const [activeView, setActiveView] = useState<"chat" | "highlights">("chat");
 
   // Fetch document with auto-refresh while processing
   const { data: document, isLoading: docLoading } = useQuery<Document>({
@@ -75,10 +78,13 @@ export default function DocumentPage() {
   }, 1000);
 
   // Handle page change
-  const handlePageChange = useCallback((page: number) => {
-    setCurrentPage(page);
-    updateReadState(page);
-  }, [updateReadState]);
+  const handlePageChange = useCallback(
+    (page: number) => {
+      setCurrentPage(page);
+      updateReadState(page);
+    },
+    [updateReadState]
+  );
 
   // Listen for page jump events from highlight list
   useEffect(() => {
@@ -121,9 +127,24 @@ export default function DocumentPage() {
           {document.status === "processing" || document.status === "uploaded" ? (
             <>
               <div className="mt-4">
-                <svg className="mx-auto h-8 w-8 animate-spin text-gray-400" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                <svg
+                  className="mx-auto h-8 w-8 animate-spin text-gray-400"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                >
+                  <circle
+                    className="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    strokeWidth="4"
+                  ></circle>
+                  <path
+                    className="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                  ></path>
                 </svg>
               </div>
               <div className="mt-4 text-sm text-gray-400">
@@ -143,71 +164,88 @@ export default function DocumentPage() {
   return (
     <div className="flex h-full flex-col overflow-hidden">
       {/* Header */}
-      <div className="flex-shrink-0 border-b bg-white px-6 py-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-semibold">{document.title}</h1>
-            <div className="mt-1 flex items-center gap-4 text-sm text-gray-500">
-              <span>{document.pages} pages</span>
-              {readState && (
-                <span>
-                  Page {readState.last_page} of {document.pages}
-                </span>
-              )}
-            </div>
-          </div>
-        </div>
+      <div className=" flex-shrink-0 border-b px-6 py-2">
+        <h1 className="text-base font-medium">{document.title}</h1>
       </div>
 
-      {/* Main Content */}
-      <div className="flex min-h-0 flex-1 overflow-hidden">
-        {/* PDF Viewer - Left */}
-        <div className="flex min-w-0 flex-1 overflow-hidden bg-gray-100 justify-center">
-          {pdfUrl ? (
-            <PdfViewer
-              url={pdfUrl}
-              currentPage={currentPage}
-              onPageChange={handlePageChange}
-              totalPages={document.pages || 1}
-              documentId={documentId}
-            />
-          ) : (
-            <div className="flex h-full items-center justify-center">
-              <div className="text-gray-500">Loading PDF...</div>
-            </div>
-          )}
-        </div>
-
-        {/* Right Panel */}
-        <div className="flex w-96 flex-shrink-0 flex-col overflow-hidden border-l bg-white">
-          <div className="flex flex-shrink-0 border-b">
-            <button
-              onClick={() => setActiveTab("chat")}
-              className={`flex-1 px-4 py-3 text-sm font-medium ${
-                activeTab === "chat"
-                  ? "border-primary text-primary border-b-2"
-                  : "text-gray-600 hover:text-gray-900"
-              }`}
-            >
-              Chat
-            </button>
-            <button
-              onClick={() => setActiveTab("highlights")}
-              className={`flex-1 px-4 py-3 text-sm font-medium ${
-                activeTab === "highlights"
-                  ? "border-primary text-primary border-b-2"
-                  : "text-gray-600 hover:text-gray-900"
-              }`}
-            >
-              Highlights
-            </button>
-          </div>
-
-          <div className="min-h-0 flex-1 overflow-hidden">
-            {activeTab === "chat" ? (
-              <ChatPanel documentId={documentId} currentPage={currentPage} />
+      {/* Main Content with Resizable Panels */}
+      <ResizablePanelGroup direction="horizontal" className="flex-1">
+        {/* PDF Viewer Panel */}
+        <ResizablePanel defaultSize={70} minSize={50} maxSize={80}>
+          <div className="bg-foreground/30 flex h-full justify-center overflow-hidden">
+            {pdfUrl ? (
+              <PdfViewer
+                url={pdfUrl}
+                currentPage={currentPage}
+                onPageChange={handlePageChange}
+                totalPages={document.pages || 1}
+                documentId={documentId}
+              />
             ) : (
-              <div className="h-full overflow-auto">
+              <div className="flex h-full items-center justify-center">
+                <div className="text-muted-foreground">Loading PDF...</div>
+              </div>
+            )}
+          </div>
+        </ResizablePanel>
+
+        {/* Resize Handle */}
+        <ResizableHandle className="bg-border hover:bg-primary/20 transition-colors" />
+
+        {/* Right Sidebar Panel */}
+        <ResizablePanel defaultSize={30} minSize={20} maxSize={50}>
+          <div className="flex h-full flex-col overflow-hidden">
+            {/* Icon Toggle Header */}
+            <div className="bg-background flex items-center justify-between px-4 pt-2">
+              <h3 className="text-foreground text-base font-semibold">
+                {activeView === "chat" ? "Chat" : "Highlights"}
+              </h3>
+              <div className="flex gap-2">
+                <Button
+                  variant={activeView === "chat" ? "default" : "ghost"}
+                  size="icon"
+                  onClick={() => setActiveView("chat")}
+                  className={cn(
+                    "h-8 w-8 rounded-full",
+                    activeView === "chat" ? "bg-primary text-primary-foreground" : "hover:bg-muted"
+                  )}
+                  title="Chat"
+                >
+                  <MessageSquare className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant={activeView === "highlights" ? "default" : "ghost"}
+                  size="icon"
+                  onClick={() => setActiveView("highlights")}
+                  className={cn(
+                    "h-8 w-8 rounded-full",
+                    activeView === "highlights"
+                      ? "bg-primary text-primary-foreground"
+                      : "hover:bg-muted"
+                  )}
+                  title="Highlights"
+                >
+                  <Highlighter className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+
+            {/* Content with transition */}
+            <div className="relative flex-1 overflow-hidden">
+              <div
+                className={cn(
+                  "absolute inset-0 transition-opacity duration-200",
+                  activeView === "chat" ? "opacity-100" : "pointer-events-none opacity-0"
+                )}
+              >
+                <ChatPanel documentId={documentId} currentPage={currentPage} />
+              </div>
+              <div
+                className={cn(
+                  "absolute inset-0 transition-opacity duration-200",
+                  activeView === "highlights" ? "opacity-100" : "pointer-events-none opacity-0"
+                )}
+              >
                 <HighlightList
                   documentId={documentId}
                   currentPage={currentPage}
@@ -220,10 +258,10 @@ export default function DocumentPage() {
                   }}
                 />
               </div>
-            )}
+            </div>
           </div>
-        </div>
-      </div>
+        </ResizablePanel>
+      </ResizablePanelGroup>
     </div>
   );
 }

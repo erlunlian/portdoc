@@ -101,7 +101,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     <div className="flex h-screen bg-white">
       {/* Sidebar - PDF List */}
       <aside
-        className={`${isCollapsed ? "w-12" : "w-60"} relative flex flex-col border-r border-gray-200 bg-white transition-all duration-300`}
+        className={`${isCollapsed ? "w-12" : "w-60"} relative flex flex-col border-r border-gray-200 transition-all duration-300`}
       >
         {/* Header */}
         <div className="p-2">

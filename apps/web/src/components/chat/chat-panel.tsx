@@ -1,9 +1,11 @@
 "use client";
 
+import { Button } from "@/components/ui/button";
 import { apiClient } from "@/lib/api/client";
+import { cn } from "@/lib/utils";
 import type { Message, Thread } from "@/types/api";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Archive, MoreHorizontal, Plus, Send, X } from "lucide-react";
+import { Archive, MessageSquare, MoreHorizontal, Plus, Send, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 interface ChatPanelProps {
@@ -80,8 +82,8 @@ export function ChatPanel({ documentId, currentPage }: ChatPanelProps) {
   // Auto-resize textarea
   useEffect(() => {
     if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto';
-      textareaRef.current.style.height = Math.min(textareaRef.current.scrollHeight, 120) + 'px';
+      textareaRef.current.style.height = "auto";
+      textareaRef.current.style.height = Math.min(textareaRef.current.scrollHeight, 120) + "px";
     }
   }, [input]);
 
@@ -176,85 +178,87 @@ export function ChatPanel({ documentId, currentPage }: ChatPanelProps) {
   };
 
   return (
-    <div className="flex h-full w-full flex-col overflow-hidden bg-gray-50">
-      {/* Header with tabs */}
-      <div className="flex-shrink-0 border-b bg-white">
-        <div className="flex items-center">
-          {/* Scrollable tabs container */}
-          <div className="flex flex-1 items-center overflow-hidden">
+    <div className="flex h-full w-full flex-col overflow-hidden">
+      {/* Header with thread tabs and actions */}
+      <div className="bg-background flex-shrink-0 p-2">
+        <div className="flex items-center gap-2">
+          {/* Thread tabs */}
+          <div className="flex flex-1 items-center overflow-hidden p-2">
             <div
               ref={tabsContainerRef}
-              className="flex flex-1 items-center overflow-x-auto scrollbar-hide"
+              className="scrollbar-hide flex flex-1 gap-1 overflow-x-auto pb-1"
             >
               {threads.map((thread: Thread) => (
                 <button
                   key={thread.id}
                   onClick={() => setSelectedThreadId(thread.id)}
-                  className={`flex min-w-0 flex-shrink-0 items-center gap-2 border-b-2 px-4 py-3 text-sm transition-colors ${
+                  className={cn(
+                    "group relative flex min-w-0 flex-shrink-0 items-center gap-2 rounded-lg px-3 py-1.5 text-xs transition-all",
                     selectedThreadId === thread.id
-                      ? "border-blue-500 text-blue-600"
-                      : "border-transparent text-gray-600 hover:text-gray-900"
-                  }`}
+                      ? "bg-muted text-foreground shadow-sm"
+                      : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                  )}
                 >
-                  <span className="truncate">
+                  <MessageSquare className="h-3 w-3" />
+                  <span className="max-w-[120px] truncate">
                     {thread.title || `Chat ${new Date(thread.created_at).toLocaleDateString()}`}
                   </span>
-                  {selectedThreadId === thread.id && (
+                  <div className="bg-muted absolute right-1 top-1/2 -translate-y-1/2 rounded-md p-0.5 opacity-0 transition-all group-hover:opacity-100">
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
                         // Handle close tab if needed
                       }}
-                      className="rounded-xl p-0.5 hover:bg-gray-200"
+                      className="hover:bg-muted rounded-sm transition-colors"
                     >
                       <X className="h-3 w-3" />
                     </button>
-                  )}
+                  </div>
                 </button>
               ))}
             </div>
           </div>
-          
+
           {/* Action buttons */}
-          <div className="flex items-center gap-1 border-l px-2">
-            <button
+          <div className="flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="icon"
               onClick={handleCreateThread}
-              className="rounded-xl p-2 text-gray-600 hover:bg-gray-100"
+              className="h-8 w-8 rounded-lg"
               title="New chat"
             >
               <Plus className="h-4 w-4" />
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
               onClick={() => setShowArchive(!showArchive)}
-              className="rounded-xl p-2 text-gray-600 hover:bg-gray-100"
+              className="h-8 w-8 rounded-lg"
               title="Chat history"
             >
               <Archive className="h-4 w-4" />
-            </button>
-            <button
-              className="rounded-xl p-2 text-gray-600 hover:bg-gray-100"
-              title="More options"
-            >
+            </Button>
+            <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg" title="More options">
               <MoreHorizontal className="h-4 w-4" />
-            </button>
+            </Button>
           </div>
         </div>
       </div>
 
       {/* Messages */}
-      <div className="min-h-0 flex-1 overflow-auto bg-white p-4">
-        <div className="space-y-4">
+      <div className="bg-background min-h-0 flex-1 overflow-auto p-4">
+        <div className="space-y-3">
           {messages.map((message: Message) => (
             <div
               key={message.id}
-              className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
+              className={cn("flex", message.role === "user" ? "justify-end" : "justify-start")}
             >
               <div
-                className={`max-w-[75%] rounded-3xl px-4 py-2.5 ${
-                  message.role === "user" 
-                    ? "bg-blue-500 text-white" 
-                    : "bg-gray-100 text-gray-900"
-                }`}
+                className={cn(
+                  "max-w-[75%] rounded-2xl px-4 py-2.5 shadow-sm",
+                  message.role === "user" ? "bg-primary text-primary-foreground" : "bg-muted"
+                )}
               >
                 <div className="whitespace-pre-wrap break-words text-sm leading-relaxed">
                   {message.content}
@@ -271,14 +275,14 @@ export function ChatPanel({ documentId, currentPage }: ChatPanelProps) {
           {/* Streaming message */}
           {isStreaming && streamingMessage && (
             <div className="flex justify-start">
-              <div className="max-w-[75%] rounded-3xl bg-gray-100 px-4 py-2.5">
-                <div className="whitespace-pre-wrap break-words text-sm leading-relaxed text-gray-900">
+              <div className="bg-muted max-w-[75%] rounded-2xl px-4 py-2.5 shadow-sm">
+                <div className="whitespace-pre-wrap break-words text-sm leading-relaxed">
                   {streamingMessage}
                 </div>
-                <div className="mt-1 flex items-center gap-1 text-xs text-gray-500">
-                  <span className="inline-block h-1 w-1 animate-pulse rounded-full bg-gray-500"></span>
-                  <span className="inline-block h-1 w-1 animate-pulse rounded-full bg-gray-500 animation-delay-200"></span>
-                  <span className="inline-block h-1 w-1 animate-pulse rounded-full bg-gray-500 animation-delay-400"></span>
+                <div className="mt-1 flex items-center gap-1">
+                  <span className="bg-primary inline-block h-1.5 w-1.5 animate-pulse rounded-full"></span>
+                  <span className="bg-primary animation-delay-200 inline-block h-1.5 w-1.5 animate-pulse rounded-full"></span>
+                  <span className="bg-primary animation-delay-400 inline-block h-1.5 w-1.5 animate-pulse rounded-full"></span>
                 </div>
               </div>
             </div>
@@ -288,8 +292,8 @@ export function ChatPanel({ documentId, currentPage }: ChatPanelProps) {
       </div>
 
       {/* Input */}
-      <div className="flex-shrink-0 border-t bg-gray-50 p-4">
-        <div className="rounded-xl bg-white shadow-sm">
+      <div className="bg-background flex-shrink-0 p-3 pt-2">
+        <div className="bg-background rounded-xl border shadow-md">
           <div className="flex items-end gap-2 p-3">
             <textarea
               ref={textareaRef}
@@ -301,27 +305,28 @@ export function ChatPanel({ documentId, currentPage }: ChatPanelProps) {
                   handleSendMessage();
                 }
               }}
-              placeholder="Message..."
-              className="flex-1 resize-none border-0 bg-transparent px-0 py-1 text-sm outline-none placeholder:text-gray-400"
+              placeholder="Ask anything about this document..."
+              className="placeholder:text-muted-foreground flex-1 resize-none border-0 bg-transparent px-0 py-1 text-sm outline-none"
               rows={1}
               style={{
-                minHeight: '24px',
-                maxHeight: '120px',
-                overflowY: 'auto'
+                minHeight: "24px",
+                maxHeight: "120px",
+                overflowY: "auto",
               }}
               disabled={isStreaming}
             />
-            <button
+            <Button
+              size="icon"
               onClick={handleSendMessage}
               disabled={!input.trim() || isStreaming}
-              className="rounded-full bg-blue-500 p-1.5 text-white transition-colors hover:bg-blue-600 disabled:bg-gray-300 disabled:text-gray-500"
+              className="h-8 w-8 rounded-full"
               aria-label="Send message"
             >
               <Send className="h-4 w-4" />
-            </button>
+            </Button>
           </div>
           {currentPage && (
-            <div className="border-t px-3 py-2 text-xs text-gray-500">
+            <div className="border-border/50 text-muted-foreground border-t px-3 py-2 text-xs">
               Context: Page {currentPage}
             </div>
           )}
