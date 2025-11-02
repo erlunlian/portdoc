@@ -51,11 +51,11 @@ export function ChatPanel({ documentId, currentPage }: ChatPanelProps) {
       setStreamingMessage("");
       setIsNewThread(true);
     } else if (!isNewThread) {
-      // Switching to an existing thread
+      // Switching to an existing thread - clear local messages so they can be loaded from API
       setLocalMessages([]);
       setStreamingMessage("");
     }
-  }, [selectedThreadId, isNewThread]);
+  }, [selectedThreadId]);
   
   // Fetch messages for selected thread (but not for placeholder or newly created threads)
   const { data: messagesData } = useQuery<{ messages: Message[]; total: number }>({
@@ -67,10 +67,18 @@ export function ChatPanel({ documentId, currentPage }: ChatPanelProps) {
 
   const messages = messagesData?.messages || [];
 
-  // Sync local messages with fetched messages (but not for new threads or while streaming)
+  // Sync local messages with fetched messages
   useEffect(() => {
+    // Update local messages with fetched messages in these cases:
+    // 1. When first loading a thread (localMessages is empty)
+    // 2. When messages are refetched after streaming (replace temp IDs with real IDs)
     if (messages.length > 0 && !isStreaming && !isNewThread) {
-      setLocalMessages(messages);
+      // If we have local messages with temp IDs, replace them with server messages
+      const hasTempMessages = localMessages.some(msg => msg.id.startsWith('temp-'));
+      
+      if (localMessages.length === 0 || hasTempMessages) {
+        setLocalMessages(messages);
+      }
     }
   }, [messages, isStreaming, isNewThread]);
 
@@ -246,9 +254,13 @@ export function ChatPanel({ documentId, currentPage }: ChatPanelProps) {
                 setIsStreaming(false);
                 setStreamingMessage("");
                 
-                // Don't refresh messages for any thread while streaming
-                // We already have the messages locally, and refreshing would clear the assistant message
-                // The messages will be fetched fresh when the user navigates away and back
+                // After streaming completes, invalidate and refetch messages to get server-side messages with real IDs
+                // But only for existing threads (not for brand new threads that were just created)
+                if (currentThreadId && currentThreadId !== NEW_CHAT_ID) {
+                  setTimeout(() => {
+                    queryClient.invalidateQueries({ queryKey: ["messages", currentThreadId] });
+                  }, 1000); // Small delay to ensure backend has saved the messages
+                }
                 return;
               } else if (data.type === "error") {
                 // Remove the optimistic user message on error
@@ -318,7 +330,7 @@ export function ChatPanel({ documentId, currentPage }: ChatPanelProps) {
 
       {/* Messages */}
       <MessageList
-        messages={localMessages.length > 0 ? localMessages : messages}
+        messages={localMessages}
         streamingMessage={streamingMessage}
         isStreaming={isStreaming}
       />
