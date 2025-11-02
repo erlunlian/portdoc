@@ -38,7 +38,7 @@ class RAGService:
             logger.info("Using OpenAI for chat", model=self.model)
 
         self.embedding = EmbeddingService()
-    
+
     async def validate_llm_connection(self) -> None:
         """
         Validate that we can connect to the LLM with the current configuration.
@@ -48,9 +48,9 @@ class RAGService:
             # Test with a minimal request to validate parameters
             test_messages = [
                 {"role": "system", "content": "Test"},
-                {"role": "user", "content": "Hi"}
+                {"role": "user", "content": "Hi"},
             ]
-            
+
             # Try the same parameter combinations we use in actual requests
             base_params = {
                 "model": self.model,
@@ -58,7 +58,7 @@ class RAGService:
                 "stream": False,
                 "max_tokens": 10,  # Minimal tokens for testing
             }
-            
+
             # Try different parameter combinations
             param_combinations = [
                 {"max_completion_tokens": 10, "temperature": 0.7},
@@ -66,10 +66,10 @@ class RAGService:
                 {"max_tokens": 10, "temperature": 0.7},
                 {"max_tokens": 10},
             ]
-            
+
             success = False
             last_error = None
-            
+
             for params in param_combinations:
                 try:
                     # Remove duplicate max_tokens if max_completion_tokens is present
@@ -77,7 +77,7 @@ class RAGService:
                     if "max_completion_tokens" in params:
                         test_params.pop("max_tokens", None)
                     test_params.update(params)
-                    
+
                     await self.client.chat.completions.create(**test_params)
                     success = True
                     logger.info(f"LLM validation successful with params: {params}")
@@ -85,10 +85,10 @@ class RAGService:
                 except Exception as e:
                     last_error = e
                     continue
-            
+
             if not success:
                 raise Exception(f"LLM configuration invalid: {str(last_error)}")
-                
+
         except Exception as e:
             logger.error(f"LLM validation failed: {str(e)}")
             raise
@@ -213,11 +213,11 @@ Guidelines:
                     "messages": messages,
                     "stream": True,
                 }
-                
+
                 # Try different parameter combinations based on model capabilities
                 stream = None
                 last_error = None
-                
+
                 # Try combinations: (max_completion_tokens + temperature), (max_completion_tokens + no temp),
                 # (max_tokens + temperature), (max_tokens + no temp)
                 param_combinations = [
@@ -226,13 +226,10 @@ Guidelines:
                     {"max_tokens": 1500, "temperature": 0.7},
                     {"max_tokens": 1500},  # Default temperature
                 ]
-                
+
                 for params in param_combinations:
                     try:
-                        stream = await self.client.chat.completions.create(
-                            **base_params,
-                            **params
-                        )
+                        stream = await self.client.chat.completions.create(**base_params, **params)
                         logger.info(f"LLM API call successful with params: {params}")
                         break  # Success, exit loop
                     except Exception as e:
@@ -240,13 +237,13 @@ Guidelines:
                         error_str = str(e)
                         logger.debug(f"LLM API attempt failed with params {params}: {error_str}")
                         continue
-                
+
                 if stream is None:
                     # All attempts failed
                     error_msg = f"All LLM API attempts failed. Last error: {last_error}"
                     logger.error(error_msg, thread_id=str(thread_id), model=self.model)
                     raise Exception(error_msg)
-                    
+
             except Exception as e:
                 # Log the error with full context
                 logger.error(
@@ -255,7 +252,7 @@ Guidelines:
                     thread_id=str(thread_id),
                     model=self.model,
                     message_count=len(messages),
-                    exc_info=True  # This will log the full stack trace
+                    exc_info=True,  # This will log the full stack trace
                 )
                 # Re-raise with a clean error message
                 raise Exception(f"LLM API error: {str(e)}")
@@ -274,7 +271,7 @@ Guidelines:
                     error=str(e),
                     thread_id=str(thread_id),
                     response_length=len(full_response),
-                    exc_info=True
+                    exc_info=True,
                 )
                 raise Exception(f"Streaming error: {str(e)}")
 
@@ -319,6 +316,58 @@ Guidelines:
         except Exception as e:
             logger.error("Failed to generate response", error=str(e), exc_info=e)
             yield f"\n\n[Error: Failed to generate response - {str(e)}]"
+
+    async def generate_thread_title(self, user_message: str) -> str:
+        """Generate a concise title for a thread based on the first user message"""
+        try:
+            messages = [
+                {
+                    "role": "system",
+                    "content": "You are a helpful assistant that generates concise, descriptive titles. Generate a title that is exactly 4 words or less. Return only the title text, no quotes or punctuation.",
+                },
+                {
+                    "role": "user",
+                    "content": f"Generate a concise title (maximum 4 words) for a conversation that starts with this message:\n\n{user_message[:500]}",
+                },
+            ]
+
+            # Try different parameter combinations
+            response = None
+            param_combinations = [
+                {"max_completion_tokens": 20, "temperature": 0.7},
+                {"max_completion_tokens": 20},
+                {"max_tokens": 20, "temperature": 0.7},
+                {"max_tokens": 20},
+            ]
+
+            for params in param_combinations:
+                try:
+                    response = await self.client.chat.completions.create(
+                        model=self.model, messages=messages, **params
+                    )
+                    break
+                except Exception as e:
+                    logger.debug(f"Title generation attempt failed with params {params}: {str(e)}")
+                    continue
+
+            if response is None:
+                logger.error("Failed to generate thread title")
+                return "New Chat"
+
+            title = response.choices[0].message.content.strip()
+            # Ensure max 4 words and clean up
+            words = title.split()[:4]
+            title = " ".join(words)
+
+            # Remove any quotes or extra punctuation
+            title = title.strip("\"'.,!?")
+
+            logger.info(f"Generated thread title: {title}")
+            return title if title else "New Chat"
+
+        except Exception as e:
+            logger.error(f"Error generating thread title: {str(e)}")
+            return "New Chat"
 
     def _estimate_cost(self, tokens_prompt: int, tokens_completion: int) -> float:
         """Estimate cost in USD (rough estimates for GPT-4)"""

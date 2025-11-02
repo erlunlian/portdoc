@@ -13,13 +13,17 @@ interface ChatPanelProps {
   currentPage?: number;
 }
 
+const NEW_CHAT_ID = "new-chat-pending";
+
 export function ChatPanel({ documentId, currentPage }: ChatPanelProps) {
-  const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
+  // Start with a virtual new chat selected
+  const [selectedThreadId, setSelectedThreadId] = useState<string | null>(NEW_CHAT_ID);
   const [input, setInput] = useState("");
   const [streamingMessage, setStreamingMessage] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
   const [showArchive, setShowArchive] = useState(false);
   const [localMessages, setLocalMessages] = useState<Message[]>([]);
+  const [isNewThread, setIsNewThread] = useState(true); // Start as new thread
   const queryClient = useQueryClient();
 
   // Fetch threads
@@ -31,40 +35,44 @@ export function ChatPanel({ documentId, currentPage }: ChatPanelProps) {
 
   const threads = threadsData?.threads || [];
 
-  // Auto-select first thread or create one
-  useEffect(() => {
-    if (threads.length > 0 && !selectedThreadId) {
-      setSelectedThreadId(threads[0].id);
-    } else if (threads.length === 0 && !selectedThreadId) {
-      // Create a new thread
-      apiClient.createThread(documentId, "New Chat").then((thread) => {
-        setSelectedThreadId((thread as Thread).id);
-      });
-    }
-  }, [threads, selectedThreadId, documentId]);
+  // Don't auto-select threads anymore - start with empty chat
+
+  // Reset the new thread flag when selecting an existing thread
+  const handleThreadSelect = (threadId: string) => {
+    setIsNewThread(false);
+    setSelectedThreadId(threadId);
+  };
 
   // Clear local messages when switching threads
   useEffect(() => {
-    setLocalMessages([]);
-    setStreamingMessage("");
-  }, [selectedThreadId]);
-
-  // Fetch messages for selected thread
+    if (selectedThreadId === NEW_CHAT_ID) {
+      // Starting a new chat - clear everything
+      setLocalMessages([]);
+      setStreamingMessage("");
+      setIsNewThread(true);
+    } else if (!isNewThread) {
+      // Switching to an existing thread
+      setLocalMessages([]);
+      setStreamingMessage("");
+    }
+  }, [selectedThreadId, isNewThread]);
+  
+  // Fetch messages for selected thread (but not for placeholder or newly created threads)
   const { data: messagesData } = useQuery<{ messages: Message[]; total: number }>({
     queryKey: ["messages", selectedThreadId],
     queryFn: () =>
       apiClient.getMessages(selectedThreadId!) as Promise<{ messages: Message[]; total: number }>,
-    enabled: !!selectedThreadId,
+    enabled: !!selectedThreadId && selectedThreadId !== NEW_CHAT_ID && !isNewThread,
   });
 
   const messages = messagesData?.messages || [];
 
-  // Sync local messages with fetched messages
+  // Sync local messages with fetched messages (but not for new threads or while streaming)
   useEffect(() => {
-    if (messages.length > 0 && !isStreaming) {
+    if (messages.length > 0 && !isStreaming && !isNewThread) {
       setLocalMessages(messages);
     }
-  }, [messages, isStreaming]);
+  }, [messages, isStreaming, isNewThread]);
 
   // Listen for "Add to Chat" events from PDF context menu
   useEffect(() => {
@@ -87,17 +95,20 @@ export function ChatPanel({ documentId, currentPage }: ChatPanelProps) {
 
 
   const handleSendMessage = async () => {
-    if (!input.trim() || !selectedThreadId || isStreaming) return;
+    if (!input.trim() || isStreaming) return;
 
     const messageText = input.trim();
     setInput("");
     setIsStreaming(true);
     setStreamingMessage("");
 
-    // Add user message optimistically
+    // Determine if this is a new chat or existing thread
+    const isNewChat = selectedThreadId === NEW_CHAT_ID;
+    
+    // Add user message optimistically (always, for both new and existing)
     const userMessage: Message = {
       id: `temp-${Date.now()}`,
-      thread_id: selectedThreadId,
+      thread_id: selectedThreadId || NEW_CHAT_ID,
       role: "user",
       content: messageText,
       tokens_prompt: null,
@@ -108,24 +119,30 @@ export function ChatPanel({ documentId, currentPage }: ChatPanelProps) {
     setLocalMessages(prev => [...prev, userMessage]);
 
     try {
-      // Get auth token
-      const supabase = await import("@/lib/supabase/client").then((m) => m.createClient());
-      const { data } = await supabase.auth.getSession();
-      const token = data.session?.access_token;
+      let response: Response;
+      
+      if (isNewChat || selectedThreadId === NEW_CHAT_ID) {
+        // Use the new start-chat endpoint
+        response = await apiClient.startChat(documentId, messageText, currentPage);
+      } else {
+        // Use existing thread streaming endpoint
+        const supabase = await import("@/lib/supabase/client").then((m) => m.createClient());
+        const { data } = await supabase.auth.getSession();
+        const token = data.session?.access_token;
 
-      if (!token) {
-        throw new Error("Not authenticated");
+        if (!token) {
+          throw new Error("Not authenticated");
+        }
+
+        const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000/v1";
+        const url = `${apiBaseUrl}/threads/${selectedThreadId}/stream?query=${encodeURIComponent(messageText)}${currentPage ? `&page_context=${currentPage}` : ""}`;
+
+        response = await fetch(url, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
       }
-
-      const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000/v1";
-      const url = `${apiBaseUrl}/threads/${selectedThreadId}/stream?query=${encodeURIComponent(messageText)}${currentPage ? `&page_context=${currentPage}` : ""}`;
-
-      // EventSource doesn't support custom headers, so we'll use fetch with streaming
-      const response = await fetch(url, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
 
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`);
@@ -154,14 +171,69 @@ export function ChatPanel({ documentId, currentPage }: ChatPanelProps) {
             try {
               const data = JSON.parse(line.slice(6));
 
-              if (data.type === "token") {
+              if (data.type === "start") {
+                // Handle new thread creation
+                if (data.thread_id && isNewChat) {
+                  // Replace placeholder with real thread ID
+                  const oldThreadId = selectedThreadId;
+                  setSelectedThreadId(data.thread_id);
+                  setIsNewThread(true); // Mark this as a new thread to prevent fetching
+                  
+                  // Update existing messages with new thread ID
+                  setLocalMessages(prev => prev.map(msg => 
+                    msg.thread_id === oldThreadId ? { ...msg, thread_id: data.thread_id } : msg
+                  ));
+                  
+                  // Add the new thread to the cache without refetching
+                  const newThread: Thread = {
+                    id: data.thread_id,
+                    user_id: "", // Will be filled by backend
+                    document_id: documentId,
+                    title: data.title || "New Chat",
+                    created_at: new Date().toISOString(),
+                    updated_at: new Date().toISOString(),
+                  };
+                  
+                  queryClient.setQueryData(
+                    ["threads", documentId],
+                    (oldData: { threads: Thread[]; total: number } | undefined) => {
+                      if (!oldData) {
+                        return { threads: [newThread], total: 1 };
+                      }
+                      return {
+                        ...oldData,
+                        threads: [newThread, ...oldData.threads],
+                        total: oldData.total + 1,
+                      };
+                    }
+                  );
+                }
+                
+                // Update thread title if provided (only for existing threads)
+                if (data.title && !isNewChat) {
+                  const threadIdToUpdate = selectedThreadId;
+                  queryClient.setQueryData(
+                    ["threads", documentId],
+                    (oldData: { threads: Thread[]; total: number } | undefined) => {
+                      if (!oldData) return oldData;
+                      return {
+                        ...oldData,
+                        threads: oldData.threads.map((t) =>
+                          t.id === threadIdToUpdate ? { ...t, title: data.title } : t
+                        ),
+                      };
+                    }
+                  );
+                }
+              } else if (data.type === "token") {
                 fullMessage += data.content || "";
                 setStreamingMessage(fullMessage);
               } else if (data.type === "done") {
                 // Add assistant message to local messages
+                const currentThreadId = data.thread_id || selectedThreadId;
                 const assistantMessage: Message = {
                   id: `temp-assistant-${Date.now()}`,
-                  thread_id: selectedThreadId,
+                  thread_id: currentThreadId!,
                   role: "assistant",
                   content: fullMessage,
                   tokens_prompt: null,
@@ -174,12 +246,9 @@ export function ChatPanel({ documentId, currentPage }: ChatPanelProps) {
                 setIsStreaming(false);
                 setStreamingMessage("");
                 
-                // Refresh messages from database after a short delay
-                setTimeout(() => {
-                  queryClient.invalidateQueries({
-                    queryKey: ["messages", selectedThreadId],
-                  });
-                }, 500);
+                // Don't refresh messages for any thread while streaming
+                // We already have the messages locally, and refreshing would clear the assistant message
+                // The messages will be fetched fresh when the user navigates away and back
                 return;
               } else if (data.type === "error") {
                 // Remove the optimistic user message on error
@@ -203,11 +272,35 @@ export function ChatPanel({ documentId, currentPage }: ChatPanelProps) {
     }
   };
 
-  const handleCreateThread = async () => {
-    const thread = await apiClient.createThread(documentId, "New Chat");
-    setSelectedThreadId((thread as Thread).id);
-    setLocalMessages([]); // Clear messages for new thread
-    queryClient.invalidateQueries({ queryKey: ["threads", documentId] });
+  const handleNewChat = () => {
+    // Set to placeholder ID for new chat
+    setSelectedThreadId(NEW_CHAT_ID);
+    setIsNewThread(true);
+    setLocalMessages([]);
+    setStreamingMessage("");
+  };
+
+  const handleDeleteThread = async (threadId: string) => {
+    try {
+      await apiClient.deleteThread(threadId);
+      
+      // If we're deleting the currently selected thread, select another one
+      if (selectedThreadId === threadId) {
+        const remainingThreads = threads.filter(t => t.id !== threadId);
+        if (remainingThreads.length > 0) {
+          // Select the first remaining thread
+          setSelectedThreadId(remainingThreads[0].id);
+        } else {
+          // No threads left, clear selection
+          setSelectedThreadId(null);
+        }
+      }
+      
+      // Refresh the threads list
+      queryClient.invalidateQueries({ queryKey: ["threads", documentId] });
+    } catch (error) {
+      console.error("Failed to delete thread:", error);
+    }
   };
 
   return (
@@ -216,8 +309,9 @@ export function ChatPanel({ documentId, currentPage }: ChatPanelProps) {
       <ThreadTabs
         threads={threads}
         selectedThreadId={selectedThreadId}
-        onThreadSelect={setSelectedThreadId}
-        onCreateThread={handleCreateThread}
+        onThreadSelect={handleThreadSelect}
+        onCreateThread={handleNewChat}
+        onDeleteThread={handleDeleteThread}
         showArchive={showArchive}
         onToggleArchive={() => setShowArchive(!showArchive)}
       />

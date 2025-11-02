@@ -11,6 +11,7 @@ interface ThreadTabsProps {
   selectedThreadId: string | null;
   onThreadSelect: (threadId: string) => void;
   onCreateThread: () => void;
+  onDeleteThread: (threadId: string) => void;
   showArchive: boolean;
   onToggleArchive: () => void;
 }
@@ -20,6 +21,7 @@ export function ThreadTabs({
   selectedThreadId,
   onThreadSelect,
   onCreateThread,
+  onDeleteThread,
   showArchive,
   onToggleArchive,
 }: ThreadTabsProps) {
@@ -49,15 +51,16 @@ export function ThreadTabs({
                 <span className="max-w-[120px] truncate">
                   {thread.title || `Chat ${new Date(thread.created_at).toLocaleDateString()}`}
                 </span>
-                <div className="bg-muted absolute right-1 top-1/2 -translate-y-1/2 rounded-md p-0.5 opacity-0 transition-all group-hover:opacity-100">
+                <div className="bg-muted absolute inset-y-0 right-1 flex items-center rounded-md p-0.5 opacity-0 transition-all group-hover:opacity-100">
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      // Handle close tab if needed
+                      onDeleteThread(thread.id);
                     }}
-                    className="hover:bg-muted rounded-sm transition-colors"
+                    className="hover:bg-muted rounded-sm shadow-sm transition-colors"
+                    title="Close tab"
                   >
-                    <X className="h-3 w-3" />
+                    <X className="m-0.5 h-3 w-3" />
                   </button>
                 </div>
               </button>

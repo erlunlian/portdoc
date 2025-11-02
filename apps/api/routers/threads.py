@@ -182,6 +182,133 @@ async def send_message(
     }
 
 
+@router.post("/threads/start-chat")
+async def start_chat(
+    document_id: str = Query(...),
+    query: str = Query(..., min_length=1, max_length=5000),
+    page_context: Optional[int] = Query(None, ge=1),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Start a new chat: create thread, generate title, and stream response"""
+    # Verify document ownership
+    doc_result = await db.execute(
+        select(Document).where(
+            Document.id == document_id, Document.owner_id == current_user.id
+        )
+    )
+    document = doc_result.scalar_one_or_none()
+    
+    if not document:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+    
+    # Create new thread
+    thread = Thread(
+        user_id=current_user.id,
+        document_id=document.id,
+        title="New Chat",  # Temporary title
+    )
+    db.add(thread)
+    await db.commit()
+    await db.refresh(thread)
+    
+    logger.info("Created thread for start-chat", thread_id=str(thread.id))
+    
+    # Save user message
+    user_msg = Message(
+        thread_id=thread.id,
+        role=MessageRole.USER,
+        content=query,
+        tokens_prompt=len(query) // 4,  # Rough estimate
+    )
+    db.add(user_msg)
+    await db.commit()
+    await db.refresh(user_msg)
+    
+    # Generate title for the thread
+    generated_title = None
+    try:
+        generated_title = await rag_service.generate_thread_title(query)
+        thread.title = generated_title
+        await db.commit()
+        logger.info(f"Generated title for new thread {thread.id}: {generated_title}")
+    except Exception as e:
+        logger.error(f"Failed to generate thread title: {str(e)}")
+    
+    # Get message history (will be just the one message we added)
+    message_history = [user_msg]
+    
+    # Determine page filter for retrieval
+    page_filter = None
+    if page_context:
+        # Search within +/- 5 pages of current page
+        page_filter = (max(1, page_context - 5), page_context + 5)
+    
+    # Retrieve relevant chunks
+    chunks = await rag_service.retrieve_chunks(
+        document_id=document.id,
+        query=query,
+        k=8,
+        page_filter=page_filter,
+        db=db,
+    )
+    
+    if not chunks:
+        logger.warning("No chunks retrieved for query", thread_id=str(thread.id))
+    
+    # Validate LLM connection before starting SSE stream
+    try:
+        await rag_service.validate_llm_connection()
+    except Exception as e:
+        logger.error(f"LLM validation failed: {str(e)}", thread_id=str(thread.id))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to connect to language model: {str(e)}",
+        )
+    
+    async def event_generator():
+        """Generate SSE events"""
+        try:
+            # Send start event with thread info
+            start_event = {
+                'type': 'start',
+                'thread_id': str(thread.id),
+                'title': generated_title or "New Chat"
+            }
+            yield f"data: {json.dumps(start_event)}\n\n"
+            
+            # Stream tokens from LLM
+            full_response = ""
+            async for token in rag_service.generate_response(
+                thread_id=thread.id,
+                user_message=query,
+                chunks=chunks,
+                message_history=message_history,
+                db=db,
+            ):
+                full_response += token
+                yield f"data: {json.dumps({'type': 'token', 'content': token})}\n\n"
+            
+            # Send done event with metadata
+            pages = sorted(set(chunk["page"] for chunk in chunks)) if chunks else []
+            yield f"data: {json.dumps({'type': 'done', 'metadata': {'pages': pages}})}\n\n"
+            
+        except Exception as e:
+            logger.error("Streaming error", error=str(e), thread_id=str(thread.id), exc_info=True)
+            # Send error event to client
+            error_message = f"Failed to generate response: {str(e)}"
+            yield f"data: {json.dumps({'type': 'error', 'content': error_message})}\n\n"
+    
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
 @router.get("/threads/{thread_id}/stream")
 async def stream_response(
     thread_id: str,
@@ -199,7 +326,14 @@ async def stream_response(
 
     if not thread:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Thread not found")
-    
+
+    # Check if this is the first message in the thread (for title generation)
+    existing_messages_result = await db.execute(
+        select(func.count(Message.id)).where(Message.thread_id == thread_id)
+    )
+    existing_message_count = existing_messages_result.scalar() or 0
+    is_first_message = existing_message_count == 0
+
     # Save user message immediately
     user_msg = Message(
         thread_id=thread.id,
@@ -210,6 +344,17 @@ async def stream_response(
     db.add(user_msg)
     await db.commit()
     await db.refresh(user_msg)
+
+    # Generate title for new threads
+    generated_title = None
+    if is_first_message and (thread.title is None or thread.title == "New Chat"):
+        try:
+            generated_title = await rag_service.generate_thread_title(query)
+            thread.title = generated_title
+            await db.commit()
+            logger.info(f"Generated title for thread {thread_id}: {generated_title}")
+        except Exception as e:
+            logger.error(f"Failed to generate thread title: {str(e)}")
 
     # Get message history
     history_result = await db.execute(
@@ -234,7 +379,7 @@ async def stream_response(
 
     if not chunks:
         logger.warning("No chunks retrieved for query", thread_id=str(thread_id))
-    
+
     # Validate LLM connection before starting SSE stream
     # This ensures we return proper HTTP errors if the LLM is misconfigured
     try:
@@ -243,19 +388,22 @@ async def stream_response(
         logger.error(f"LLM validation failed: {str(e)}", thread_id=str(thread_id))
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to connect to language model: {str(e)}"
+            detail=f"Failed to connect to language model: {str(e)}",
         )
 
     async def event_generator():
         """Generate SSE events"""
         try:
-            # Send start event
-            yield f"data: {json.dumps({'type': 'start'})}\n\n"
+            # Send start event with title if generated
+            start_event = {"type": "start"}
+            if generated_title:
+                start_event["title"] = generated_title
+            yield f"data: {json.dumps(start_event)}\n\n"
 
             # Collect the full response first to catch any errors before streaming
             full_response = ""
             pages = []
-            
+
             # Stream tokens from LLM
             async for token in rag_service.generate_response(
                 thread_id=thread.id,
@@ -285,6 +433,32 @@ async def stream_response(
             "X-Accel-Buffering": "no",
         },
     )
+
+
+@router.patch("/threads/{thread_id}", response_model=ThreadResponse)
+async def update_thread(
+    thread_id: str,
+    title: Optional[str] = None,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update a thread (currently only title)"""
+    result = await db.execute(
+        select(Thread).where(Thread.id == thread_id, Thread.user_id == current_user.id)
+    )
+    thread = result.scalar_one_or_none()
+
+    if not thread:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Thread not found")
+
+    if title is not None:
+        thread.title = title
+
+    await db.commit()
+    await db.refresh(thread)
+
+    logger.info("Updated thread", thread_id=str(thread_id), title=title)
+    return ThreadResponse.model_validate(thread)
 
 
 @router.delete("/threads/{thread_id}", status_code=status.HTTP_204_NO_CONTENT)

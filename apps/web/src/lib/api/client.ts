@@ -138,8 +138,44 @@ export class APIClient {
     return this.request(`/threads/${threadId}/messages`);
   }
 
+  async updateThread(threadId: string, title: string) {
+    return this.request(`/threads/${threadId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ title }),
+    });
+  }
+
   async deleteThread(threadId: string) {
     return this.request(`/threads/${threadId}`, { method: "DELETE" });
+  }
+
+  async startChat(documentId: string, query: string, pageContext?: number) {
+    const params = new URLSearchParams({
+      document_id: documentId,
+      query: query,
+    });
+    if (pageContext) {
+      params.append("page_context", pageContext.toString());
+    }
+    
+    // This returns a streaming response, so we'll handle it differently
+    const token = await this.getAuthToken();
+    const headers: Record<string, string> = {};
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+
+    const response = await fetch(`${API_BASE_URL}/threads/start-chat?${params}`, {
+      method: "POST",
+      headers,
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ detail: "Request failed" }));
+      throw new Error(error.detail || `HTTP ${response.status}`);
+    }
+
+    return response;
   }
 
   // Search
