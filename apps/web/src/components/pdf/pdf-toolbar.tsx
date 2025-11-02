@@ -106,7 +106,7 @@ export function PdfToolbar({
           onClick={handlePreviousPage}
           disabled={currentPage <= 1}
           className={cn(
-            "rounded p-2 transition-colors",
+            "rounded-xl p-2 transition-colors",
             currentPage <= 1
               ? "cursor-not-allowed text-gray-300"
               : "hover:bg-gray-100 text-gray-600"
@@ -124,7 +124,7 @@ export function PdfToolbar({
             onChange={handlePageInputChange}
             onBlur={handlePageInputSubmit}
             onKeyDown={handlePageInputKeyDown}
-            className="w-12 rounded border px-2 py-1 text-center text-sm focus:border-blue-500 focus:outline-none"
+            className="w-12 rounded-xl border px-2 py-1 text-center text-sm focus:border-blue-500 focus:outline-none"
           />
           <span className="text-sm text-gray-600">of {totalPages}</span>
         </div>
@@ -133,7 +133,7 @@ export function PdfToolbar({
           onClick={handleNextPage}
           disabled={currentPage >= totalPages}
           className={cn(
-            "rounded p-2 transition-colors",
+            "rounded-xl p-2 transition-colors",
             currentPage >= totalPages
               ? "cursor-not-allowed text-gray-300"
               : "hover:bg-gray-100 text-gray-600"
@@ -150,7 +150,7 @@ export function PdfToolbar({
           onClick={onZoomOut}
           disabled={scale <= 0.5}
           className={cn(
-            "rounded p-2 transition-colors",
+            "rounded-xl p-2 transition-colors",
             scale <= 0.5
               ? "cursor-not-allowed text-gray-300"
               : "hover:bg-gray-100 text-gray-600"
@@ -163,7 +163,7 @@ export function PdfToolbar({
         <select
           value={scale}
           onChange={(e) => onZoomChange(parseFloat(e.target.value))}
-          className="rounded border px-3 py-1 text-sm focus:border-blue-500 focus:outline-none"
+          className="rounded-xl border px-3 py-1 text-sm focus:border-blue-500 focus:outline-none"
         >
           {ZOOM_OPTIONS.map((option) => (
             <option key={option.value} value={option.value}>
@@ -176,7 +176,7 @@ export function PdfToolbar({
           onClick={onZoomIn}
           disabled={scale >= 2}
           className={cn(
-            "rounded p-2 transition-colors",
+            "rounded-xl p-2 transition-colors",
             scale >= 2
               ? "cursor-not-allowed text-gray-300"
               : "hover:bg-gray-100 text-gray-600"
@@ -190,7 +190,7 @@ export function PdfToolbar({
 
         <button
           onClick={handleFitToWidth}
-          className="rounded p-2 text-gray-600 transition-colors hover:bg-gray-100"
+          className="rounded-xl p-2 text-gray-600 transition-colors hover:bg-gray-100"
           aria-label="Fit to width"
           title="Fit to width"
         >
@@ -199,7 +199,7 @@ export function PdfToolbar({
 
         <button
           onClick={handleFitToPage}
-          className="rounded p-2 text-gray-600 transition-colors hover:bg-gray-100"
+          className="rounded-xl p-2 text-gray-600 transition-colors hover:bg-gray-100"
           aria-label="Fit to page"
           title="Fit to page"
         >

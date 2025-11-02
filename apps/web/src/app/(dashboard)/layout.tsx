@@ -101,7 +101,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     <div className="flex h-screen bg-white">
       {/* Sidebar - PDF List */}
       <aside
-        className={`${isCollapsed ? "w-16" : "w-64"} relative flex flex-col border-r border-gray-200 bg-white transition-all duration-300`}
+        className={`${isCollapsed ? "w-12" : "w-60"} relative flex flex-col border-r border-gray-200 bg-white transition-all duration-300`}
       >
         {/* Header */}
         <div className="p-2">
@@ -110,7 +110,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           >
             <button
               onClick={() => (isCollapsed ? setIsCollapsed(false) : router.push("/"))}
-              className={`group relative flex items-center rounded-lg transition-colors hover:bg-gray-100 ${isCollapsed ? "justify-center p-1.5" : "gap-2 px-3 py-1.5"}`}
+              className={`group relative flex items-center rounded-xl transition-colors hover:bg-gray-100 ${isCollapsed ? "justify-center p-1.5" : "gap-2 px-3 py-1.5"}`}
               title={isCollapsed ? "Expand sidebar" : "Go to homepage"}
             >
               <div
@@ -141,7 +141,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             {!isCollapsed && (
               <button
                 onClick={() => setIsCollapsed(!isCollapsed)}
-                className="rounded-lg p-1.5 transition-colors hover:bg-gray-100"
+                className="rounded-xl p-1.5 transition-colors hover:bg-gray-100"
                 title="Collapse sidebar"
               >
                 <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -159,7 +159,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           {/* New Document Button */}
           <button
             onClick={() => router.push("/")}
-            className={`mb-1 flex w-full items-center ${isCollapsed ? "justify-center px-2 py-2" : "justify-start px-3 py-2"} gap-2 rounded-lg transition-colors hover:bg-gray-100`}
+            className={`mb-1 flex w-full items-center ${isCollapsed ? "justify-center px-2 py-2" : "justify-start px-3 py-2"} gap-2 rounded-xl transition-colors hover:bg-gray-100`}
             title="Upload new PDF"
           >
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -180,7 +180,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           {/* Search Button */}
           <button
             onClick={() => setShowSearchCommand(true)}
-            className={`flex w-full items-center ${isCollapsed ? "justify-center px-2 py-2" : "justify-start px-3 py-2"} gap-2 rounded-lg transition-colors hover:bg-gray-100`}
+            className={`flex w-full items-center ${isCollapsed ? "justify-center px-2 py-2" : "justify-start px-3 py-2"} gap-2 rounded-xl transition-colors hover:bg-gray-100`}
             title="Search documents"
           >
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -211,7 +211,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           {isLoading ? (
             <div className="space-y-1 p-4">
               {[...Array(5)].map((_, i) => (
-                <div key={i} className="h-8 animate-pulse rounded bg-gray-100" />
+                <div key={i} className="h-8 animate-pulse rounded-xl bg-gray-100" />
               ))}
             </div>
           ) : documents.length === 0 ? (
@@ -221,7 +221,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               {documents.map((doc) => (
                 <div
                   key={doc.id}
-                  className={`group relative flex w-full items-center rounded-lg transition-colors hover:bg-gray-100 ${
+                  className={`group relative flex w-full items-center rounded-xl transition-colors hover:bg-gray-100 ${
                     selectedDocId === doc.id ? "bg-gray-100" : ""
                   }`}
                 >
@@ -238,7 +238,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <button
-                        className="mr-2 flex-shrink-0 rounded p-1 opacity-0 transition-opacity hover:bg-gray-200 group-hover:opacity-100"
+                        className="mr-2 flex-shrink-0 rounded-xl p-1 opacity-0 transition-opacity hover:bg-gray-200 group-hover:opacity-100"
                         onClick={(e) => e.stopPropagation()}
                       >
                         <MoreVertical className="h-4 w-4" />
@@ -268,7 +268,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button
-                className={`flex w-full items-center ${isCollapsed ? "justify-center px-2 py-2" : "justify-start px-3 py-2"} gap-3 rounded-lg transition-colors hover:bg-gray-100`}
+                className={`flex w-full items-center ${isCollapsed ? "justify-center px-2 py-2" : "justify-start gap-3 px-3 py-2"} rounded-xl transition-colors hover:bg-gray-100`}
                 title="Profile menu"
               >
                 <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-black text-xs font-medium text-white">

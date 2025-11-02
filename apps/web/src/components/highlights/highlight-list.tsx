@@ -100,7 +100,7 @@ export function HighlightList({ documentId, currentPage, onJumpToPage }: Highlig
                 {pageHighlights.map((highlight: Highlight) => (
                   <div
                     key={highlight.id}
-                    className="group relative rounded border bg-yellow-50 p-3"
+                    className="group relative rounded-xl border bg-yellow-50 p-3"
                   >
                     <div className="text-sm text-gray-800">{highlight.text}</div>
                     <button

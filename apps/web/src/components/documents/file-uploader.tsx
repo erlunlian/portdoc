@@ -52,7 +52,7 @@ export function FileUploader({ onUploadComplete }: FileUploaderProps) {
       />
       <label
         htmlFor="file-upload"
-        className={`bg-primary hover:bg-primary/90 cursor-pointer rounded-md px-4 py-2 text-sm font-medium text-white ${
+        className={`bg-primary hover:bg-primary/90 cursor-pointer rounded-xl px-4 py-2 text-sm font-medium text-white ${
           uploading ? "opacity-50" : ""
         }`}
       >
