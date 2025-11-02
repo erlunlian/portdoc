@@ -1,12 +1,12 @@
 "use client";
 
-import { Button } from "@/components/ui/button";
 import { apiClient } from "@/lib/api/client";
-import { cn } from "@/lib/utils";
 import type { Message, Thread } from "@/types/api";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Archive, MessageSquare, MoreHorizontal, Plus, Send, X } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
+import { MessageInput } from "./message-input";
+import { MessageList } from "./message-list";
+import { ThreadTabs } from "./thread-tabs";
 
 interface ChatPanelProps {
   documentId: string;
@@ -19,9 +19,6 @@ export function ChatPanel({ documentId, currentPage }: ChatPanelProps) {
   const [streamingMessage, setStreamingMessage] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
   const [showArchive, setShowArchive] = useState(false);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const tabsContainerRef = useRef<HTMLDivElement>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const queryClient = useQueryClient();
 
   // Fetch threads
@@ -74,18 +71,6 @@ export function ChatPanel({ documentId, currentPage }: ChatPanelProps) {
     };
   }, []);
 
-  // Scroll to bottom when messages change
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, streamingMessage]);
-
-  // Auto-resize textarea
-  useEffect(() => {
-    if (textareaRef.current) {
-      textareaRef.current.style.height = "auto";
-      textareaRef.current.style.height = Math.min(textareaRef.current.scrollHeight, 120) + "px";
-    }
-  }, [input]);
 
   const handleSendMessage = async () => {
     if (!input.trim() || !selectedThreadId || isStreaming) return;
@@ -180,158 +165,30 @@ export function ChatPanel({ documentId, currentPage }: ChatPanelProps) {
   return (
     <div className="flex h-full w-full flex-col overflow-hidden">
       {/* Header with thread tabs and actions */}
-      <div className="bg-background flex-shrink-0 p-2">
-        <div className="flex items-center gap-2">
-          {/* Thread tabs */}
-          <div className="flex flex-1 items-center overflow-hidden p-2">
-            <div
-              ref={tabsContainerRef}
-              className="scrollbar-hide flex flex-1 gap-1 overflow-x-auto pb-1"
-            >
-              {threads.map((thread: Thread) => (
-                <button
-                  key={thread.id}
-                  onClick={() => setSelectedThreadId(thread.id)}
-                  className={cn(
-                    "group relative flex min-w-0 flex-shrink-0 items-center gap-2 rounded-lg px-3 py-1.5 text-xs transition-all",
-                    selectedThreadId === thread.id
-                      ? "bg-muted text-foreground shadow-sm"
-                      : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                  )}
-                >
-                  <MessageSquare className="h-3 w-3" />
-                  <span className="max-w-[120px] truncate">
-                    {thread.title || `Chat ${new Date(thread.created_at).toLocaleDateString()}`}
-                  </span>
-                  <div className="bg-muted absolute right-1 top-1/2 -translate-y-1/2 rounded-md p-0.5 opacity-0 transition-all group-hover:opacity-100">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        // Handle close tab if needed
-                      }}
-                      className="hover:bg-muted rounded-sm transition-colors"
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
-                  </div>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Action buttons */}
-          <div className="flex items-center gap-1">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={handleCreateThread}
-              className="h-8 w-8 rounded-lg"
-              title="New chat"
-            >
-              <Plus className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setShowArchive(!showArchive)}
-              className="h-8 w-8 rounded-lg"
-              title="Chat history"
-            >
-              <Archive className="h-4 w-4" />
-            </Button>
-            <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg" title="More options">
-              <MoreHorizontal className="h-4 w-4" />
-            </Button>
-          </div>
-        </div>
-      </div>
+      <ThreadTabs
+        threads={threads}
+        selectedThreadId={selectedThreadId}
+        onThreadSelect={setSelectedThreadId}
+        onCreateThread={handleCreateThread}
+        showArchive={showArchive}
+        onToggleArchive={() => setShowArchive(!showArchive)}
+      />
 
       {/* Messages */}
-      <div className="bg-background min-h-0 flex-1 overflow-auto p-4">
-        <div className="space-y-3">
-          {messages.map((message: Message) => (
-            <div
-              key={message.id}
-              className={cn("flex", message.role === "user" ? "justify-end" : "justify-start")}
-            >
-              <div
-                className={cn(
-                  "max-w-[75%] rounded-2xl px-4 py-2.5 shadow-sm",
-                  message.role === "user" ? "bg-primary text-primary-foreground" : "bg-muted"
-                )}
-              >
-                <div className="whitespace-pre-wrap break-words text-sm leading-relaxed">
-                  {message.content}
-                </div>
-                {message.metadata?.pages && message.metadata.pages.length > 0 && (
-                  <div className="mt-1.5 text-xs opacity-75">
-                    📄 Pages {message.metadata.pages.join(", ")}
-                  </div>
-                )}
-              </div>
-            </div>
-          ))}
-
-          {/* Streaming message */}
-          {isStreaming && streamingMessage && (
-            <div className="flex justify-start">
-              <div className="bg-muted max-w-[75%] rounded-2xl px-4 py-2.5 shadow-sm">
-                <div className="whitespace-pre-wrap break-words text-sm leading-relaxed">
-                  {streamingMessage}
-                </div>
-                <div className="mt-1 flex items-center gap-1">
-                  <span className="bg-primary inline-block h-1.5 w-1.5 animate-pulse rounded-full"></span>
-                  <span className="bg-primary animation-delay-200 inline-block h-1.5 w-1.5 animate-pulse rounded-full"></span>
-                  <span className="bg-primary animation-delay-400 inline-block h-1.5 w-1.5 animate-pulse rounded-full"></span>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-        <div ref={messagesEndRef} />
-      </div>
+      <MessageList
+        messages={messages}
+        streamingMessage={streamingMessage}
+        isStreaming={isStreaming}
+      />
 
       {/* Input */}
-      <div className="bg-background flex-shrink-0 p-3 pt-2">
-        <div className="bg-background rounded-xl border shadow-md">
-          <div className="flex items-end gap-2 p-3">
-            <textarea
-              ref={textareaRef}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  handleSendMessage();
-                }
-              }}
-              placeholder="Ask anything about this document..."
-              className="placeholder:text-muted-foreground/50 flex-1 resize-none border-0 bg-transparent px-0 py-1 text-sm outline-none"
-              rows={1}
-              style={{
-                minHeight: "24px",
-                maxHeight: "120px",
-                overflowY: "auto",
-              }}
-              disabled={isStreaming}
-            />
-            <Button
-              size="icon"
-              onClick={handleSendMessage}
-              disabled={!input.trim() || isStreaming}
-              className="h-8 w-8 rounded-full"
-              aria-label="Send message"
-            >
-              <Send className="h-4 w-4" />
-            </Button>
-          </div>
-          {currentPage && (
-            <div className="border-border/50 text-muted-foreground border-t px-3 py-2 text-xs">
-              Context: Page {currentPage}
-            </div>
-          )}
-        </div>
-      </div>
+      <MessageInput
+        input={input}
+        onInputChange={setInput}
+        onSendMessage={handleSendMessage}
+        isStreaming={isStreaming}
+        currentPage={currentPage}
+      />
     </div>
   );
 }

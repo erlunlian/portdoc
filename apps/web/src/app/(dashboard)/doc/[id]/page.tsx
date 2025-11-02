@@ -1,25 +1,23 @@
 "use client";
 
-import { ChatPanel } from "@/components/chat/chat-panel";
-import { HighlightList } from "@/components/highlights/highlight-list";
 import { PdfViewer } from "@/components/pdf/pdf-viewer";
-import { Button } from "@/components/ui/button";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { apiClient } from "@/lib/api/client";
 import { createClient } from "@/lib/supabase/client";
-import { cn, debounce } from "@/lib/utils";
+import { debounce } from "@/lib/utils";
 import type { Document, DocumentReadState } from "@/types/api";
 import { useQuery } from "@tanstack/react-query";
-import { Highlighter, MessageSquare } from "lucide-react";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
+import { DocumentHeader } from "./components/document-header";
+import { DocumentStatus } from "./components/document-status";
+import { SidePanel } from "./components/side-panel";
 
 export default function DocumentPage() {
   const params = useParams();
   const documentId = params.id as string;
   const [currentPage, setCurrentPage] = useState(1);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
-  const [activeView, setActiveView] = useState<"chat" | "highlights">("chat");
 
   // Fetch document with auto-refresh while processing
   const { data: document, isLoading: docLoading } = useQuery<Document>({
@@ -98,75 +96,16 @@ export default function DocumentPage() {
     };
   }, [handlePageChange]);
 
-  if (docLoading) {
-    return (
-      <div className="flex h-screen items-center justify-center">
-        <div className="text-lg">Loading document...</div>
-      </div>
-    );
-  }
-
-  if (!document) {
-    return (
-      <div className="flex h-screen items-center justify-center">
-        <div className="text-lg text-red-600">Document not found</div>
-      </div>
-    );
-  }
-
-  if (document.status !== "ready") {
-    return (
-      <div className="flex h-screen items-center justify-center">
-        <div className="text-center">
-          <div className="text-lg font-semibold">
-            {document.status === "error" ? "Processing Failed" : "Document Processing"}
-          </div>
-          <div className="mt-2 text-sm text-gray-500">
-            Status: {document.status === "uploaded" ? "Starting processing..." : document.status}
-          </div>
-          {document.status === "processing" || document.status === "uploaded" ? (
-            <>
-              <div className="mt-4">
-                <svg
-                  className="mx-auto h-8 w-8 animate-spin text-gray-400"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                >
-                  <circle
-                    className="opacity-25"
-                    cx="12"
-                    cy="12"
-                    r="10"
-                    stroke="currentColor"
-                    strokeWidth="4"
-                  ></circle>
-                  <path
-                    className="opacity-75"
-                    fill="currentColor"
-                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                  ></path>
-                </svg>
-              </div>
-              <div className="mt-4 text-sm text-gray-400">
-                Extracting text and generating embeddings...
-              </div>
-            </>
-          ) : document.status === "error" ? (
-            <div className="mt-4 text-sm text-red-500">
-              There was an error processing this document. Please try uploading it again.
-            </div>
-          ) : null}
-        </div>
-      </div>
-    );
+  // Handle status states
+  const statusComponent = <DocumentStatus document={document || null} isLoading={docLoading} />;
+  if (docLoading || !document || document.status !== "ready") {
+    return statusComponent;
   }
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
       {/* Header */}
-      <div className=" flex-shrink-0 border-b px-6 py-2">
-        <h1 className="text-base font-medium">{document.title}</h1>
-      </div>
+      <DocumentHeader title={document.title} />
 
       {/* Main Content with Resizable Panels */}
       <ResizablePanelGroup direction="horizontal" className="flex-1">
@@ -194,72 +133,17 @@ export default function DocumentPage() {
 
         {/* Right Sidebar Panel */}
         <ResizablePanel defaultSize={30} minSize={20} maxSize={50}>
-          <div className="flex h-full flex-col overflow-hidden">
-            {/* Icon Toggle Header */}
-            <div className="bg-background flex items-center justify-between px-4 pt-2">
-              <h3 className="text-foreground text-base font-semibold">
-                {activeView === "chat" ? "Chat" : "Highlights"}
-              </h3>
-              <div className="flex gap-2">
-                <Button
-                  variant={activeView === "chat" ? "default" : "ghost"}
-                  size="icon"
-                  onClick={() => setActiveView("chat")}
-                  className={cn(
-                    "h-8 w-8 rounded-full",
-                    activeView === "chat" ? "bg-primary text-primary-foreground" : "hover:bg-muted"
-                  )}
-                  title="Chat"
-                >
-                  <MessageSquare className="h-4 w-4" />
-                </Button>
-                <Button
-                  variant={activeView === "highlights" ? "default" : "ghost"}
-                  size="icon"
-                  onClick={() => setActiveView("highlights")}
-                  className={cn(
-                    "h-8 w-8 rounded-full",
-                    activeView === "highlights"
-                      ? "bg-primary text-primary-foreground"
-                      : "hover:bg-muted"
-                  )}
-                  title="Highlights"
-                >
-                  <Highlighter className="h-4 w-4" />
-                </Button>
-              </div>
-            </div>
-
-            {/* Content with transition */}
-            <div className="relative flex-1 overflow-hidden">
-              <div
-                className={cn(
-                  "absolute inset-0 transition-opacity duration-200",
-                  activeView === "chat" ? "opacity-100" : "pointer-events-none opacity-0"
-                )}
-              >
-                <ChatPanel documentId={documentId} currentPage={currentPage} />
-              </div>
-              <div
-                className={cn(
-                  "absolute inset-0 transition-opacity duration-200",
-                  activeView === "highlights" ? "opacity-100" : "pointer-events-none opacity-0"
-                )}
-              >
-                <HighlightList
-                  documentId={documentId}
-                  currentPage={currentPage}
-                  onJumpToPage={(page) => {
-                    // Trigger programmatic scroll via custom event
-                    window.dispatchEvent(
-                      new CustomEvent("jumpToPageProgrammatic", { detail: { page } })
-                    );
-                    handlePageChange(page);
-                  }}
-                />
-              </div>
-            </div>
-          </div>
+          <SidePanel
+            documentId={documentId}
+            currentPage={currentPage}
+            onJumpToPage={(page) => {
+              // Trigger programmatic scroll via custom event
+              window.dispatchEvent(
+                new CustomEvent("jumpToPageProgrammatic", { detail: { page } })
+              );
+              handlePageChange(page);
+            }}
+          />
         </ResizablePanel>
       </ResizablePanelGroup>
     </div>
