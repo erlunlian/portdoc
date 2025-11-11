@@ -28,7 +28,6 @@ class HighlightResponse(BaseModel):
     """Schema for highlight response"""
 
     id: UUID
-    user_id: UUID
     document_id: UUID
     page: int
     rects: List[dict]

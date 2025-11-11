@@ -12,7 +12,6 @@ class DocumentResponse(BaseModel):
     """Schema for document response"""
 
     id: UUID
-    owner_id: UUID
     title: str
     original_filename: str
     storage_path: str
@@ -52,7 +51,6 @@ class DocumentReadStateResponse(BaseModel):
     """Schema for read state response"""
 
     id: UUID
-    user_id: UUID
     document_id: UUID
     last_page: int
     scale: float | None

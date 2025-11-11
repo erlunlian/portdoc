@@ -20,7 +20,6 @@ class ThreadResponse(BaseModel):
     """Schema for thread response"""
 
     id: UUID
-    user_id: UUID
     document_id: UUID
     title: Optional[str] = None
     created_at: datetime

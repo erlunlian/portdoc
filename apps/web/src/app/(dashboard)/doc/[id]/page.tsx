@@ -3,7 +3,6 @@
 import { PdfViewer } from "@/components/pdf/pdf-viewer";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { apiClient } from "@/lib/api/client";
-import { createClient } from "@/lib/supabase/client";
 import { debounce } from "@/lib/utils";
 import type { Document, DocumentReadState } from "@/types/api";
 import { useQuery } from "@tanstack/react-query";
@@ -44,38 +43,30 @@ export default function DocumentPage() {
   // Set initial page from read state
   useEffect(() => {
     if (hasInitialized || !readState) return;
-    
+
     if (readState.last_page) {
       setCurrentPage(readState.last_page);
       setHasInitialized(true);
     }
   }, [readState, hasInitialized]);
 
-  // Get PDF URL from Supabase Storage
+  // Get PDF URL from local storage
   useEffect(() => {
-    async function getPdfUrl() {
-      if (!document?.storage_path) return;
+    if (!document?.storage_path) return;
 
-      const supabase = createClient();
-      const { data } = await supabase.storage
-        .from("pdfs")
-        .createSignedUrl(document.storage_path, 3600);
-
-      if (data?.signedUrl) {
-        setPdfUrl(data.signedUrl);
-      }
-    }
-
-    getPdfUrl();
-  }, [document]);
+    // Construct URL to serve PDF from API
+    const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000/v1";
+    // We'll need to add an endpoint to serve PDFs
+    setPdfUrl(`${apiBaseUrl}/documents/${documentId}/pdf`);
+  }, [document, documentId]);
 
   // Debounced update of read state
   const updateReadState = debounce(async (page: number, scale?: number) => {
     if (!documentId || !readState) return;
     try {
       await apiClient.updateReadState(
-        documentId, 
-        page, 
+        documentId,
+        page,
         scale !== undefined ? scale : readState.scale,
         false
       );
@@ -159,9 +150,7 @@ export default function DocumentPage() {
             currentPage={currentPage}
             onJumpToPage={(page) => {
               // Trigger programmatic scroll via custom event
-              window.dispatchEvent(
-                new CustomEvent("jumpToPageProgrammatic", { detail: { page } })
-              );
+              window.dispatchEvent(new CustomEvent("jumpToPageProgrammatic", { detail: { page } }));
               handlePageChange(page);
             }}
           />

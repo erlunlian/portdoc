@@ -1,173 +1,7 @@
 services:
-  # Supabase Studio
-  studio:
-    env_file:
-      - ../.env
-    image: supabase/studio:latest
-    restart: unless-stopped
-    ports:
-      - 54323:3000
-    environment:
-      STUDIO_PG_META_URL: http://meta:8080
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
-      SUPABASE_URL: http://kong:8000
-      SUPABASE_PUBLIC_URL: ${SUPABASE_PUBLIC_URL:-http://localhost:54321}
-      SUPABASE_ANON_KEY: ${ANON_KEY}
-      SUPABASE_SERVICE_KEY: ${SERVICE_ROLE_KEY}
-
-  # Kong API Gateway
-  kong:
-    image: kong:2.8.1
-    restart: unless-stopped
-    env_file:
-      - ../.env
-    ports:
-      - 54321:8000
-      - 54324:8443
-    environment:
-      KONG_DATABASE: "off"
-      KONG_DECLARATIVE_CONFIG: /var/lib/kong/kong.yml
-      KONG_DNS_ORDER: LAST,A,CNAME
-      KONG_PLUGINS: request-transformer,cors,key-auth,acl
-    volumes:
-      - ./supabase/kong.yml:/var/lib/kong/kong.yml:ro
-
-  # Auth
-  auth:
-    image: supabase/gotrue:v2.99.0
-    env_file:
-      - ../.env
-    depends_on:
-      db:
-        condition: service_healthy
-    restart: unless-stopped
-    environment:
-      GOTRUE_API_HOST: 0.0.0.0
-      GOTRUE_API_PORT: 9999
-      API_EXTERNAL_URL: ${API_EXTERNAL_URL:-http://localhost:54321}
-      GOTRUE_DB_DRIVER: postgres
-      GOTRUE_DB_DATABASE_URL: postgres://supabase_auth_admin:${POSTGRES_PASSWORD:-postgres}@db:5432/postgres
-      GOTRUE_SITE_URL: ${SITE_URL:-http://localhost:3000}
-      GOTRUE_URI_ALLOW_LIST: ${ADDITIONAL_REDIRECT_URLS}
-      GOTRUE_DISABLE_SIGNUP: ${DISABLE_SIGNUP:-false}
-      GOTRUE_JWT_ADMIN_ROLES: service_role
-      GOTRUE_JWT_AUD: authenticated
-      GOTRUE_JWT_DEFAULT_GROUP_NAME: authenticated
-      GOTRUE_JWT_EXP: ${JWT_EXPIRY:-3600}
-      GOTRUE_JWT_SECRET: ${JWT_SECRET}
-      GOTRUE_EXTERNAL_EMAIL_ENABLED: ${ENABLE_EMAIL_SIGNUP:-true}
-      GOTRUE_MAILER_AUTOCONFIRM: ${ENABLE_EMAIL_AUTOCONFIRM:-true}
-      GOTRUE_SMTP_ADMIN_EMAIL: ${SMTP_ADMIN_EMAIL:-admin@example.com}
-      GOTRUE_SMTP_HOST: ${SMTP_HOST:-supabase-mail}
-      GOTRUE_SMTP_PORT: ${SMTP_PORT:-2500}
-      GOTRUE_SMTP_USER: ${SMTP_USER}
-      GOTRUE_SMTP_PASS: ${SMTP_PASS}
-      GOTRUE_SMTP_SENDER_NAME: ${SMTP_SENDER_NAME}
-      GOTRUE_MAILER_URLPATHS_INVITE: ${MAILER_URLPATHS_INVITE}
-      GOTRUE_MAILER_URLPATHS_CONFIRMATION: ${MAILER_URLPATHS_CONFIRMATION}
-      GOTRUE_MAILER_URLPATHS_RECOVERY: ${MAILER_URLPATHS_RECOVERY}
-      GOTRUE_MAILER_URLPATHS_EMAIL_CHANGE: ${MAILER_URLPATHS_EMAIL_CHANGE}
-
-  # Rest API
-  rest:
-    image: postgrest/postgrest:v11.2.2
-    env_file:
-      - ../.env
-    depends_on:
-      db:
-        condition: service_healthy
-    restart: unless-stopped
-    environment:
-      PGRST_DB_URI: postgres://authenticator:${POSTGRES_PASSWORD:-postgres}@db:5432/postgres
-      PGRST_DB_SCHEMAS: ${PGRST_DB_SCHEMAS:-public,storage,graphql_public}
-      PGRST_DB_ANON_ROLE: anon
-      PGRST_JWT_SECRET: ${JWT_SECRET}
-      PGRST_DB_USE_LEGACY_GUCS: "false"
-
-  # Realtime
-  realtime:
-    image: supabase/realtime:v2.25.35
-    env_file:
-      - ../.env
-    depends_on:
-      db:
-        condition: service_healthy
-    restart: unless-stopped
-    environment:
-      PORT: 4000
-      DB_HOST: db
-      DB_PORT: 5432
-      DB_USER: supabase_admin
-      DB_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
-      DB_NAME: postgres
-      DB_AFTER_CONNECT_QUERY: 'SET search_path TO _realtime'
-      DB_ENC_KEY: supabaserealtimedevenckey
-      API_JWT_SECRET: ${JWT_SECRET}
-      FLY_ALLOC_ID: fly123
-      FLY_APP_NAME: realtime
-      SECRET_KEY_BASE: UpNVntn3cDxHJpq99YMc1T1AQgQpc8kfYTuRgBiYa15BLrx8etQoXz3gZv1/u2oq
-      ERL_AFLAGS: -proto_dist inet_tcp
-      ENABLE_TAILSCALE: "false"
-      DNS_NODES: "''"
-
-  # Storage
-  storage:
-    image: supabase/storage-api:latest
-    env_file:
-      - ../.env
-    depends_on:
-      db:
-        condition: service_healthy
-      rest:
-        condition: service_started
-    restart: unless-stopped
-    environment:
-      ANON_KEY: ${ANON_KEY}
-      SERVICE_KEY: ${SERVICE_ROLE_KEY}
-      POSTGREST_URL: http://rest:3000
-      PGRST_JWT_SECRET: ${JWT_SECRET}
-      DATABASE_URL: postgres://supabase_storage_admin:${POSTGRES_PASSWORD:-postgres}@db:5432/postgres
-      FILE_SIZE_LIMIT: 52428800
-      STORAGE_BACKEND: file
-      FILE_STORAGE_BACKEND_PATH: /var/lib/storage
-      TENANT_ID: stub
-      REGION: stub
-      GLOBAL_S3_BUCKET: stub
-      ENABLE_IMAGE_TRANSFORMATION: "true"
-      IMGPROXY_URL: http://imgproxy:5001
-    volumes:
-      - storage-data:/var/lib/storage
-
-  # Image proxy
-  imgproxy:
-    image: darthsim/imgproxy:v3.8.0
-    environment:
-      IMGPROXY_BIND: ":5001"
-      IMGPROXY_LOCAL_FILESYSTEM_ROOT: /
-      IMGPROXY_USE_ETAG: "true"
-    volumes:
-      - storage-data:/var/lib/storage
-
-  # Meta
-  meta:
-    image: supabase/postgres-meta:v0.75.0
-    env_file:
-      - ../.env
-    depends_on:
-      db:
-        condition: service_healthy
-    restart: unless-stopped
-    environment:
-      PG_META_PORT: 8080
-      PG_META_DB_HOST: db
-      PG_META_DB_PORT: 5432
-      PG_META_DB_NAME: postgres
-      PG_META_DB_USER: supabase
-      PG_META_DB_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
-
-  # Database
+  # PostgreSQL Database with pgvector
   db:
-    image: supabase/postgres:15.1.0.147
+    image: ankane/pgvector:v0.5.1
     env_file:
       - ../.env
     healthcheck:
@@ -175,26 +9,17 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
-    command:
-      - postgres
-      - -c
-      - config_file=/etc/postgresql/postgresql.conf
-      - -c
-      - log_min_messages=fatal
     restart: unless-stopped
     ports:
-      - 54322:5432
+      - 5432:5432
     environment:
-      POSTGRES_HOST: /var/run/postgresql
-      PGPORT: 5432
-      POSTGRES_PORT: 5432
-      PGPASSWORD: ${POSTGRES_PASSWORD:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
-      PGDATABASE: postgres
       POSTGRES_DB: postgres
+      POSTGRES_HOST_AUTH_METHOD: trust
+    command: postgres -c listen_addresses='*'
     volumes:
       - db-data:/var/lib/postgresql/data
-      - ./supabase/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
 
   # FastAPI Backend
   # NOTE: For local development, run the API manually with hot reload:
@@ -228,6 +53,5 @@ services:
 
 volumes:
   db-data:
-  storage-data:
   api-storage:
 

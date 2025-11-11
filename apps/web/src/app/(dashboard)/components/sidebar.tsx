@@ -7,9 +7,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { createClient } from "@/lib/supabase/client";
 import type { Document } from "@/types/api";
-import { LogOut, MoreVertical, Trash2 } from "lucide-react";
+import { MoreVertical, Trash2 } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
@@ -24,52 +23,21 @@ export function Sidebar({ documents, isLoading, onSearchClick }: SidebarProps) {
   const pathname = usePathname();
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [deleteDialogDoc, setDeleteDialogDoc] = useState<Document | null>(null);
-  const [userEmail, setUserEmail] = useState<string | null>(null);
-  const [userInitials, setUserInitials] = useState<string>("");
 
   const selectedDocId = pathname.startsWith("/doc/") ? pathname.split("/")[2] : null;
 
-  // Load collapsed state from localStorage and fetch user info
+  // Load collapsed state from localStorage
   useEffect(() => {
     const savedState = localStorage.getItem("sidebarCollapsed");
     if (savedState) {
       setIsCollapsed(JSON.parse(savedState));
     }
-
-    // Fetch user info
-    const fetchUser = async () => {
-      const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (user) {
-        setUserEmail(user.email || null);
-        // Generate initials from email
-        if (user.email) {
-          const parts = user.email.split("@")[0].split(".");
-          const initials = parts
-            .map((part) => part[0]?.toUpperCase() || "")
-            .filter(Boolean)
-            .slice(0, 2)
-            .join("");
-          setUserInitials(initials || user.email[0].toUpperCase());
-        }
-      }
-    };
-    fetchUser();
   }, []);
 
   // Save collapsed state to localStorage
   useEffect(() => {
     localStorage.setItem("sidebarCollapsed", JSON.stringify(isCollapsed));
   }, [isCollapsed]);
-
-  const handleSignOut = async () => {
-    const supabase = createClient();
-    await supabase.auth.signOut();
-    router.push("/auth/login");
-    router.refresh();
-  };
 
   return (
     <>
@@ -234,38 +202,6 @@ export function Sidebar({ documents, isLoading, onSearchClick }: SidebarProps) {
               ))}
             </div>
           ) : null}
-        </div>
-
-        {/* Profile Section at Bottom */}
-        <div className="border-t border-gray-200 p-2">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button
-                className={`flex w-full items-center ${isCollapsed ? "justify-center px-2 py-2" : "justify-start gap-3 px-3 py-2"} rounded-xl transition-colors hover:bg-gray-100`}
-                title="Profile menu"
-              >
-                <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-black text-xs font-medium text-white">
-                  {userInitials}
-                </div>
-                <div
-                  className={`min-w-0 flex-1 text-left transition-all duration-300 ${isCollapsed ? "w-0 overflow-hidden opacity-0" : "opacity-100 delay-150"}`}
-                >
-                  {userEmail && <div className="truncate text-sm text-gray-900">{userEmail}</div>}
-                </div>
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
-              align={isCollapsed ? "start" : "end"}
-              side="top"
-              sideOffset={5}
-              className="w-56"
-            >
-              <DropdownMenuItem onClick={handleSignOut}>
-                <LogOut className="mr-2 h-4 w-4" />
-                Sign out
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
         </div>
       </aside>
 

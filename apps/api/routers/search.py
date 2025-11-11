@@ -6,9 +6,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.base import get_db
-from db.models import Document, User
+from db.models import Document
 from schemas.search import SearchRequest, SearchResponse, SearchResult
-from services.auth import get_current_user
 from services.rag import RAGService
 
 logger = structlog.get_logger()
@@ -19,17 +18,11 @@ rag_service = RAGService()
 @router.post("/search", response_model=SearchResponse)
 async def search_document(
     search_request: SearchRequest,
-    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Semantic search over document chunks"""
-    # Verify document ownership
-    doc_result = await db.execute(
-        select(Document).where(
-            Document.id == search_request.document_id,
-            Document.owner_id == current_user.id,
-        )
-    )
+    # Verify document exists
+    doc_result = await db.execute(select(Document).where(Document.id == search_request.document_id))
     document = doc_result.scalar_one_or_none()
 
     if not document:

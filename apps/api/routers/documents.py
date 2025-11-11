@@ -14,11 +14,12 @@ from fastapi import (
     UploadFile,
     status,
 )
+from fastapi.responses import FileResponse
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.base import get_db
-from db.models import Document, DocumentReadState, DocumentStatus, User
+from db.models import Document, DocumentReadState, DocumentStatus
 from schemas.documents import (
     DocumentListResponse,
     DocumentReadStateResponse,
@@ -26,7 +27,6 @@ from schemas.documents import (
     DocumentResponse,
     UploadURLResponse,
 )
-from services.auth import get_current_user
 from services.ingestion import IngestionService
 from services.storage import StorageService
 
@@ -41,7 +41,6 @@ async def upload_document(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     title: str | None = Form(None),
-    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Upload a document file to storage through the backend"""
@@ -61,18 +60,17 @@ async def upload_document(
         original_filename = file.filename or "document.pdf"
 
         # Generate storage path
-        storage_path = f"{current_user.id}/{document_id}.pdf"
+        storage_path = f"{document_id}.pdf"
 
         # Read file content
         file_content = await file.read()
 
-        # Upload to storage using service role (bypasses RLS)
+        # Upload to local storage
         await storage_service.upload_file(storage_path, file_content, file.content_type)
 
         # Create document record
         document = Document(
             id=document_id,
-            owner_id=current_user.id,
             title=document_title,
             original_filename=original_filename,
             storage_path=storage_path,
@@ -84,7 +82,6 @@ async def upload_document(
         logger.info(
             "Document uploaded successfully",
             document_id=str(document_id),
-            user_id=str(current_user.id),
             filename=original_filename,
         )
 
@@ -132,14 +129,11 @@ async def upload_document(
 async def ingest_document(
     document_id: str,
     background_tasks: BackgroundTasks,
-    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Trigger document ingestion (PDF processing and chunking)"""
-    # Verify document ownership
-    result = await db.execute(
-        select(Document).where(Document.id == document_id, Document.owner_id == current_user.id)
-    )
+    # Verify document exists
+    result = await db.execute(select(Document).where(Document.id == document_id))
     document = result.scalar_one_or_none()
 
     if not document:
@@ -184,12 +178,11 @@ async def list_documents(
     status_filter: DocumentStatus | None = Query(None),
     limit: int = Query(50, ge=1, le=100),
     offset: int = Query(0, ge=0),
-    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """List user's documents with optional status filter"""
+    """List all documents with optional status filter"""
     # Build query
-    query = select(Document).where(Document.owner_id == current_user.id)
+    query = select(Document)
 
     if status_filter:
         query = query.where(Document.status == status_filter)
@@ -213,13 +206,10 @@ async def list_documents(
 @router.get("/documents/{document_id}", response_model=DocumentResponse)
 async def get_document(
     document_id: str,
-    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Get a single document by ID"""
-    result = await db.execute(
-        select(Document).where(Document.id == document_id, Document.owner_id == current_user.id)
-    )
+    result = await db.execute(select(Document).where(Document.id == document_id))
     document = result.scalar_one_or_none()
 
     if not document:
@@ -231,13 +221,10 @@ async def get_document(
 @router.delete("/documents/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_document(
     document_id: str,
-    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Delete a document"""
-    result = await db.execute(
-        select(Document).where(Document.id == document_id, Document.owner_id == current_user.id)
-    )
+    result = await db.execute(select(Document).where(Document.id == document_id))
     document = result.scalar_one_or_none()
 
     if not document:
@@ -253,17 +240,43 @@ async def delete_document(
     logger.info("Deleted document", document_id=str(document_id))
 
 
+@router.get("/documents/{document_id}/pdf")
+async def get_document_pdf(
+    document_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Serve the PDF file for a document"""
+    result = await db.execute(select(Document).where(Document.id == document_id))
+    document = result.scalar_one_or_none()
+
+    if not document:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+
+    # Get file path from storage service
+    file_path = await storage_service.get_file_url(document.storage_path)
+
+    try:
+        return FileResponse(
+            file_path,
+            media_type="application/pdf",
+            filename=document.original_filename,
+        )
+    except FileNotFoundError:
+        logger.error("PDF file not found", document_id=str(document_id), path=file_path)
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="PDF file not found in storage",
+        )
+
+
 @router.get("/documents/{document_id}/read-state", response_model=DocumentReadStateResponse)
 async def get_read_state(
     document_id: str,
-    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Get user's read state for a document"""
-    # Verify document exists and user owns it
-    doc_result = await db.execute(
-        select(Document).where(Document.id == document_id, Document.owner_id == current_user.id)
-    )
+    """Get read state for a document"""
+    # Verify document exists
+    doc_result = await db.execute(select(Document).where(Document.id == document_id))
     document = doc_result.scalar_one_or_none()
 
     if not document:
@@ -271,17 +284,13 @@ async def get_read_state(
 
     # Get or create read state
     result = await db.execute(
-        select(DocumentReadState).where(
-            DocumentReadState.user_id == current_user.id,
-            DocumentReadState.document_id == document_id,
-        )
+        select(DocumentReadState).where(DocumentReadState.document_id == document_id)
     )
     read_state = result.scalar_one_or_none()
 
     if not read_state:
         # Create default read state
         read_state = DocumentReadState(
-            user_id=current_user.id,
             document_id=document.id,
             last_page=1,
             is_read=False,
@@ -297,14 +306,11 @@ async def get_read_state(
 async def update_read_state(
     document_id: str,
     update: DocumentReadStateUpdate,
-    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Update user's read state for a document"""
-    # Verify document exists and user owns it
-    doc_result = await db.execute(
-        select(Document).where(Document.id == document_id, Document.owner_id == current_user.id)
-    )
+    """Update read state for a document"""
+    # Verify document exists
+    doc_result = await db.execute(select(Document).where(Document.id == document_id))
     document = doc_result.scalar_one_or_none()
 
     if not document:
@@ -312,16 +318,12 @@ async def update_read_state(
 
     # Get or create read state
     result = await db.execute(
-        select(DocumentReadState).where(
-            DocumentReadState.user_id == current_user.id,
-            DocumentReadState.document_id == document_id,
-        )
+        select(DocumentReadState).where(DocumentReadState.document_id == document_id)
     )
     read_state = result.scalar_one_or_none()
 
     if not read_state:
         read_state = DocumentReadState(
-            user_id=current_user.id,
             document_id=document.id,
             last_page=update.last_page,
             scale=update.scale,

@@ -16,15 +16,10 @@ class Settings(BaseSettings):
     )
 
     # Database
-    database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:54322/postgres"
+    database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/postgres"
 
-    # Supabase
-    supabase_url: str = "http://localhost:54321"
-    supabase_service_role_key: str = ""
-    # JWT secret - can be SUPABASE_JWT_SECRET or JWT_SECRET (Supabase uses JWT_SECRET)
-    supabase_jwt_secret: str = ""
-    jwt_secret: str = ""  # Fallback to match Supabase's JWT_SECRET
-    storage_bucket: str = "pdfs"
+    # Storage
+    storage_path: str = "/tmp/storage/pdfs"
 
     # Ollama (local)
     ollama_base_url: str = "http://localhost:11434/v1"
@@ -43,7 +38,7 @@ class Settings(BaseSettings):
     # App
     environment: str = "development"
     log_level: str = "INFO"
-    cors_origins: list[str] = ["http://localhost:3000", "http://localhost:54321"]
+    cors_origins: list[str] = ["http://localhost:3000"]
 
 
 settings = Settings()

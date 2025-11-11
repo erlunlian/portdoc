@@ -1,39 +1,13 @@
-import { createClient } from "@/lib/supabase/client";
 import type { UploadURLResponse } from "@/types/api";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000/v1";
 
 export class APIClient {
-  private async getAuthToken(): Promise<string | null> {
-    const supabase = createClient();
-    const {
-      data: { session },
-      error,
-    } = await supabase.auth.getSession();
-
-    if (error) {
-      return null;
-    }
-
-    if (!session) {
-      return null;
-    }
-
-    return session.access_token || null;
-  }
-
   private async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
-    const token = await this.getAuthToken();
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
       ...(options.headers as Record<string, string>),
     };
-
-    if (token) {
-      headers["Authorization"] = `Bearer ${token}`;
-    } else {
-      throw new Error("Authentication required. Please log in.");
-    }
 
     const response = await fetch(`${API_BASE_URL}${endpoint}`, {
       ...options,
@@ -41,42 +15,6 @@ export class APIClient {
     });
 
     if (!response.ok) {
-      // Handle 401 specifically
-      if (response.status === 401) {
-        const supabase = createClient();
-        // Try to refresh the session
-        const {
-          data: { session: refreshedSession },
-          error: refreshError,
-        } = await supabase.auth.refreshSession();
-
-        if (refreshError || !refreshedSession) {
-          // Redirect to login
-          if (typeof window !== "undefined") {
-            window.location.href = "/auth/login";
-          }
-          throw new Error("Session expired. Please log in again.");
-        }
-
-        // Retry the request with the new token
-        headers["Authorization"] = `Bearer ${refreshedSession.access_token}`;
-        const retryResponse = await fetch(`${API_BASE_URL}${endpoint}`, {
-          ...options,
-          headers,
-        });
-
-        if (!retryResponse.ok) {
-          const error = await retryResponse.json().catch(() => ({ detail: "Request failed" }));
-          throw new Error(error.detail || `HTTP ${retryResponse.status}`);
-        }
-
-        if (retryResponse.status === 204) {
-          return {} as T;
-        }
-
-        return retryResponse.json();
-      }
-
       const error = await response.json().catch(() => ({ detail: "Request failed" }));
       throw new Error(error.detail || `HTTP ${response.status}`);
     }
@@ -90,53 +28,12 @@ export class APIClient {
   }
 
   private async uploadFile<T>(endpoint: string, formData: FormData): Promise<T> {
-    const token = await this.getAuthToken();
-    const headers: Record<string, string> = {};
-
-    if (token) {
-      headers["Authorization"] = `Bearer ${token}`;
-    } else {
-      throw new Error("Authentication required. Please log in.");
-    }
-
     const response = await fetch(`${API_BASE_URL}${endpoint}`, {
       method: "POST",
-      headers,
       body: formData,
     });
 
     if (!response.ok) {
-      // Handle 401 specifically
-      if (response.status === 401) {
-        const supabase = createClient();
-        const {
-          data: { session: refreshedSession },
-          error: refreshError,
-        } = await supabase.auth.refreshSession();
-
-        if (refreshError || !refreshedSession) {
-          if (typeof window !== "undefined") {
-            window.location.href = "/auth/login";
-          }
-          throw new Error("Session expired. Please log in again.");
-        }
-
-        // Retry the request with the new token
-        headers["Authorization"] = `Bearer ${refreshedSession.access_token}`;
-        const retryResponse = await fetch(`${API_BASE_URL}${endpoint}`, {
-          method: "POST",
-          headers,
-          body: formData,
-        });
-
-        if (!retryResponse.ok) {
-          const error = await retryResponse.json().catch(() => ({ detail: "Request failed" }));
-          throw new Error(error.detail || `HTTP ${retryResponse.status}`);
-        }
-
-        return retryResponse.json();
-      }
-
       const error = await response.json().catch(() => ({ detail: "Request failed" }));
       throw new Error(error.detail || `HTTP ${response.status}`);
     }
@@ -244,16 +141,8 @@ export class APIClient {
       params.append("page_context", pageContext.toString());
     }
 
-    // This returns a streaming response, so we'll handle it differently
-    const token = await this.getAuthToken();
-    const headers: Record<string, string> = {};
-    if (token) {
-      headers["Authorization"] = `Bearer ${token}`;
-    }
-
     const response = await fetch(`${API_BASE_URL}/threads/start-chat?${params}`, {
       method: "POST",
-      headers,
     });
 
     if (!response.ok) {
