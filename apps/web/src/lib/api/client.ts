@@ -84,6 +84,13 @@ export class APIClient {
     });
   }
 
+  async updateDocument(documentId: string, title: string) {
+    return this.request(`/documents/${documentId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ title }),
+    });
+  }
+
   async deleteDocument(documentId: string) {
     return this.request(`/documents/${documentId}`, { method: "DELETE" });
   }

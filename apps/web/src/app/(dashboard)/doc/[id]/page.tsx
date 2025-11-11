@@ -1,7 +1,6 @@
 "use client";
 
 import { PdfViewer } from "@/components/pdf/pdf-viewer";
-import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { apiClient } from "@/lib/api/client";
 import { debounce } from "@/lib/utils";
 import type { Document, DocumentReadState } from "@/types/api";
@@ -113,49 +112,44 @@ export default function DocumentPage() {
   }
 
   return (
-    <div className="flex h-full flex-col overflow-hidden">
-      {/* Header */}
-      <DocumentHeader title={document.title} />
+    <div className="bg-muted/30 flex h-full flex-col overflow-hidden">
+      {/* Floating Header Row */}
+      <div className="flex-shrink-0 px-6 pb-3 pt-6">
+        <DocumentHeader title={document.title} documentId={documentId} />
+      </div>
 
-      {/* Main Content with Resizable Panels */}
-      <ResizablePanelGroup direction="horizontal" className="flex-1">
-        {/* PDF Viewer Panel */}
-        <ResizablePanel defaultSize={70} minSize={50} maxSize={80}>
-          <div className="bg-foreground/30 flex h-full justify-center overflow-hidden">
-            {pdfUrl ? (
-              <PdfViewer
-                url={pdfUrl}
-                currentPage={currentPage}
-                onPageChange={handlePageChange}
-                totalPages={document.pages || 1}
-                documentId={documentId}
-                initialScale={readState?.scale || undefined}
-                onScaleChange={handleScaleChange}
-              />
-            ) : (
-              <div className="flex h-full items-center justify-center">
-                <div className="text-muted-foreground">Loading PDF...</div>
-              </div>
-            )}
-          </div>
-        </ResizablePanel>
+      {/* Main Content - Floating Panels */}
+      <div className="relative flex-1 overflow-hidden px-6 pb-6">
+        {/* Floating PDF Viewer */}
+        <div className="bg-background/95 absolute bottom-6 left-6 right-[448px] top-0 flex justify-center overflow-hidden rounded-3xl shadow-2xl backdrop-blur-xl">
+          {pdfUrl ? (
+            <PdfViewer
+              url={pdfUrl}
+              currentPage={currentPage}
+              onPageChange={handlePageChange}
+              totalPages={document.pages || 1}
+              documentId={documentId}
+              initialScale={readState?.scale || undefined}
+              onScaleChange={handleScaleChange}
+            />
+          ) : (
+            <div className="flex h-full items-center justify-center">
+              <div className="text-muted-foreground">Loading PDF...</div>
+            </div>
+          )}
+        </div>
 
-        {/* Resize Handle */}
-        <ResizableHandle className="bg-border hover:bg-primary/20 transition-colors" />
-
-        {/* Right Sidebar Panel */}
-        <ResizablePanel defaultSize={30} minSize={20} maxSize={50}>
-          <SidePanel
-            documentId={documentId}
-            currentPage={currentPage}
-            onJumpToPage={(page) => {
-              // Trigger programmatic scroll via custom event
-              window.dispatchEvent(new CustomEvent("jumpToPageProgrammatic", { detail: { page } }));
-              handlePageChange(page);
-            }}
-          />
-        </ResizablePanel>
-      </ResizablePanelGroup>
+        {/* Floating Side Panel */}
+        <SidePanel
+          documentId={documentId}
+          currentPage={currentPage}
+          onJumpToPage={(page) => {
+            // Trigger programmatic scroll via custom event
+            window.dispatchEvent(new CustomEvent("jumpToPageProgrammatic", { detail: { page } }));
+            handlePageChange(page);
+          }}
+        />
+      </div>
     </div>
   );
 }

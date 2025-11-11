@@ -1,13 +1,8 @@
 "use client";
 
-import { useState } from "react";
-import {
-  ChevronLeft,
-  ChevronRight,
-  ZoomIn,
-  ZoomOut,
-} from "lucide-react";
 import { cn } from "@/lib/utils";
+import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut } from "lucide-react";
+import { useState } from "react";
 
 interface PdfToolbarProps {
   currentPage: number;
@@ -88,9 +83,9 @@ export function PdfToolbar({
   }
 
   return (
-    <div className="flex h-14 items-center border-b bg-white px-4 shadow-sm w-full">
+    <div className="border-border/50 flex h-14 w-full items-center border-b bg-transparent px-6">
       {/* Left Section: Page Navigation */}
-      <div className="flex items-center gap-2 flex-shrink-0">
+      <div className="flex flex-shrink-0 items-center gap-2">
         <button
           onClick={handlePreviousPage}
           disabled={currentPage <= 1}
@@ -98,7 +93,7 @@ export function PdfToolbar({
             "rounded-xl p-2 transition-colors",
             currentPage <= 1
               ? "cursor-not-allowed text-gray-300"
-              : "hover:bg-gray-100 text-gray-600"
+              : "text-gray-600 hover:bg-gray-100"
           )}
           aria-label="Previous page"
         >
@@ -125,7 +120,7 @@ export function PdfToolbar({
             "rounded-xl p-2 transition-colors",
             currentPage >= totalPages
               ? "cursor-not-allowed text-gray-300"
-              : "hover:bg-gray-100 text-gray-600"
+              : "text-gray-600 hover:bg-gray-100"
           )}
           aria-label="Next page"
         >
@@ -137,7 +132,7 @@ export function PdfToolbar({
       <div className="flex-1" />
 
       {/* Right Section: Zoom Controls and Shortcuts */}
-      <div className="flex items-center gap-4 flex-shrink-0">
+      <div className="flex flex-shrink-0 items-center gap-4">
         {/* Zoom Controls */}
         <div className="flex items-center gap-2">
           <button
@@ -145,9 +140,7 @@ export function PdfToolbar({
             disabled={scale <= 0.5}
             className={cn(
               "rounded-xl p-2 transition-colors",
-              scale <= 0.5
-                ? "cursor-not-allowed text-gray-300"
-                : "hover:bg-gray-100 text-gray-600"
+              scale <= 0.5 ? "cursor-not-allowed text-gray-300" : "text-gray-600 hover:bg-gray-100"
             )}
             aria-label="Zoom out"
           >
@@ -171,9 +164,7 @@ export function PdfToolbar({
             disabled={scale >= 5}
             className={cn(
               "rounded-xl p-2 transition-colors",
-              scale >= 5
-                ? "cursor-not-allowed text-gray-300"
-                : "hover:bg-gray-100 text-gray-600"
+              scale >= 5 ? "cursor-not-allowed text-gray-300" : "text-gray-600 hover:bg-gray-100"
             )}
             aria-label="Zoom in"
           >

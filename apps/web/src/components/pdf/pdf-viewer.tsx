@@ -1,5 +1,6 @@
 "use client";
 
+import { cn, debounce } from "@/lib/utils";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
 import "react-pdf/dist/esm/Page/AnnotationLayer.css";
@@ -7,8 +8,6 @@ import "react-pdf/dist/esm/Page/TextLayer.css";
 import { HighlightOverlay } from "./highlight-overlay";
 import { PdfContextMenu } from "./pdf-context-menu";
 import { PdfToolbar } from "./pdf-toolbar";
-import { cn } from "@/lib/utils";
-import { debounce } from "@/lib/utils";
 
 // Configure PDF.js worker
 pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`;
@@ -54,7 +53,7 @@ export function PdfViewer({
     height: number;
   } | null>(null);
   const [renderError, setRenderError] = useState<Error | null>(null);
-  
+
   const containerRef = useRef<HTMLDivElement>(null);
   const documentRef = useRef<HTMLDivElement>(null);
   const pageRefs = useRef<Map<number, HTMLDivElement>>(new Map());
@@ -69,20 +68,20 @@ export function PdfViewer({
       if (pageElement && containerRef.current) {
         // Set flag to prevent scroll detection from interfering
         isProgrammaticScroll.current = true;
-        
+
         // Get the page position relative to the document container
         const pageRect = pageElement.getBoundingClientRect();
         const containerRect = containerRef.current.getBoundingClientRect();
-        
+
         // Calculate the scroll position
         // We need to add current scroll position and subtract container top
         const scrollPosition = containerRef.current.scrollTop + (pageRect.top - containerRect.top);
-        
+
         containerRef.current.scrollTo({
           top: scrollPosition,
           behavior: "smooth",
         });
-        
+
         // Reset flag after scroll completes
         setTimeout(() => {
           isProgrammaticScroll.current = false;
@@ -133,7 +132,7 @@ export function PdfViewer({
     pageRefs.current.forEach((pageElement, pageNum) => {
       const pageTop = pageElement.offsetTop - container.offsetTop;
       const pageBottom = pageTop + pageElement.clientHeight;
-      
+
       if (centerY >= pageTop && centerY <= pageBottom) {
         currentPageInView = pageNum;
       }
@@ -160,12 +159,19 @@ export function PdfViewer({
       scrollToPage(event.detail.page);
     };
 
+    const handleScrollToPage = (event: CustomEvent<{ page: number }>) => {
+      scrollToPage(event.detail.page);
+      handlePageChange(event.detail.page);
+    };
+
     window.addEventListener("jumpToPage", handleJumpToPage as EventListener);
     window.addEventListener("jumpToPageProgrammatic", handleProgrammaticJump as EventListener);
+    window.addEventListener("scrollToPage", handleScrollToPage as EventListener);
 
     return () => {
       window.removeEventListener("jumpToPage", handleJumpToPage as EventListener);
       window.removeEventListener("jumpToPageProgrammatic", handleProgrammaticJump as EventListener);
+      window.removeEventListener("scrollToPage", handleScrollToPage as EventListener);
     };
   }, [scrollToPage, handlePageChange]);
 
@@ -178,11 +184,14 @@ export function PdfViewer({
   }, [currentPage, pageNumber, scrollToPage]);
 
   // Handle zoom
-  const handleZoom = useCallback((newScale: number) => {
-    setScale(newScale);
-    // Notify parent of scale change
-    onScaleChange?.(newScale);
-  }, [onScaleChange]);
+  const handleZoom = useCallback(
+    (newScale: number) => {
+      setScale(newScale);
+      // Notify parent of scale change
+      onScaleChange?.(newScale);
+    },
+    [onScaleChange]
+  );
 
   const zoomIn = useCallback(() => {
     const currentIndex = ZOOM_LEVELS.findIndex((level) => level === scale);
@@ -205,7 +214,7 @@ export function PdfViewer({
   // Handle text selection
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     if (e.button !== 0) return; // Only handle left click
-    
+
     const rect = e.currentTarget.getBoundingClientRect();
     selectionStartRef.current = {
       x: e.clientX - rect.left,
@@ -216,46 +225,52 @@ export function PdfViewer({
     setSelectionRect(null);
   }, []);
 
-  const handleMouseMove = useCallback((e: React.MouseEvent) => {
-    if (!isSelecting || !selectionStartRef.current) return;
+  const handleMouseMove = useCallback(
+    (e: React.MouseEvent) => {
+      if (!isSelecting || !selectionStartRef.current) return;
 
-    const rect = e.currentTarget.getBoundingClientRect();
-    const currentX = e.clientX - rect.left;
-    const currentY = e.clientY - rect.top;
+      const rect = e.currentTarget.getBoundingClientRect();
+      const currentX = e.clientX - rect.left;
+      const currentY = e.clientY - rect.top;
 
-    const x = Math.min(selectionStartRef.current.x, currentX);
-    const y = Math.min(selectionStartRef.current.y, currentY);
-    const width = Math.abs(currentX - selectionStartRef.current.x);
-    const height = Math.abs(currentY - selectionStartRef.current.y);
+      const x = Math.min(selectionStartRef.current.x, currentX);
+      const y = Math.min(selectionStartRef.current.y, currentY);
+      const width = Math.abs(currentX - selectionStartRef.current.x);
+      const height = Math.abs(currentY - selectionStartRef.current.y);
 
-    setSelectionRect({ x, y, width, height });
-  }, [isSelecting]);
+      setSelectionRect({ x, y, width, height });
+    },
+    [isSelecting]
+  );
 
-  const handleMouseUp = useCallback((e: React.MouseEvent) => {
-    if (!isSelecting || !selectionRect) {
+  const handleMouseUp = useCallback(
+    (e: React.MouseEvent) => {
+      if (!isSelecting || !selectionRect) {
+        setIsSelecting(false);
+        return;
+      }
+
+      // Get selected text
+      const selection = window.getSelection();
+      if (selection && selection.toString().trim()) {
+        // Find which page the selection is on
+        const target = e.target as HTMLElement;
+        const pageElement = target.closest("[data-page-number]");
+        const pageNum = pageElement
+          ? parseInt(pageElement.getAttribute("data-page-number") || "1")
+          : pageNumber;
+
+        setSelection({
+          text: selection.toString().trim(),
+          rect: selectionRect,
+          pageNumber: pageNum,
+        });
+      }
+
       setIsSelecting(false);
-      return;
-    }
-
-    // Get selected text
-    const selection = window.getSelection();
-    if (selection && selection.toString().trim()) {
-      // Find which page the selection is on
-      const target = e.target as HTMLElement;
-      const pageElement = target.closest('[data-page-number]');
-      const pageNum = pageElement ? 
-        parseInt(pageElement.getAttribute('data-page-number') || '1') : 
-        pageNumber;
-
-      setSelection({
-        text: selection.toString().trim(),
-        rect: selectionRect,
-        pageNumber: pageNum,
-      });
-    }
-
-    setIsSelecting(false);
-  }, [isSelecting, selectionRect, pageNumber]);
+    },
+    [isSelecting, selectionRect, pageNumber]
+  );
 
   const handleSelectionClear = () => {
     setSelection(null);
@@ -296,7 +311,7 @@ export function PdfViewer({
   }
 
   return (
-    <div className="flex h-full flex-col bg-gray-100 w-full">
+    <div className="flex h-full w-full flex-col bg-transparent">
       {/* Toolbar */}
       <div className="w-full flex-shrink-0">
         <PdfToolbar
@@ -313,10 +328,10 @@ export function PdfViewer({
       {/* PDF Document Container */}
       <div
         ref={containerRef}
-        className="flex-1 overflow-auto flex justify-center"
+        className="flex flex-1 justify-center overflow-auto"
         onScroll={debouncedHandleScroll}
       >
-        <div ref={documentRef} className="w-full flex flex-col items-center py-8">
+        <div ref={documentRef} className="flex w-full flex-col items-center py-8">
           <Document
             file={url}
             onLoadSuccess={onDocumentLoadSuccess}
@@ -345,15 +360,17 @@ export function PdfViewer({
                     index + 1 === pageNumber && "ring-2 ring-blue-500 ring-offset-2"
                   )}
                 />
-                
+
                 {/* Highlight Overlay for this page */}
                 {index + 1 === pageNumber && (
                   <HighlightOverlay
                     documentId={documentId}
                     page={index + 1}
-                    pageRef={pageRefs.current.get(index + 1) ? 
-                      { current: pageRefs.current.get(index + 1) || null } : 
-                      { current: null }}
+                    pageRef={
+                      pageRefs.current.get(index + 1)
+                        ? { current: pageRefs.current.get(index + 1) || null }
+                        : { current: null }
+                    }
                     isSelecting={isSelecting}
                     selectionRect={selectionRect}
                     onSelectionComplete={handleSelectionClear}

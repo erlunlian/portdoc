@@ -39,6 +39,12 @@ class UploadURLResponse(BaseModel):
     storage_path: str
 
 
+class DocumentUpdate(BaseModel):
+    """Schema for updating document"""
+
+    title: str = Field(..., min_length=1, max_length=500)
+
+
 class DocumentReadStateUpdate(BaseModel):
     """Schema for updating read state"""
 

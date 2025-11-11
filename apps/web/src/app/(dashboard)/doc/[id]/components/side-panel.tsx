@@ -17,9 +17,9 @@ export function SidePanel({ documentId, currentPage, onJumpToPage }: SidePanelPr
   const [activeView, setActiveView] = useState<"chat" | "highlights">("chat");
 
   return (
-    <div className="flex h-full flex-col overflow-hidden">
+    <div className="bg-background/95 absolute bottom-6 right-6 top-0 flex w-[400px] flex-col overflow-hidden rounded-3xl shadow-2xl backdrop-blur-xl">
       {/* Icon Toggle Header */}
-      <div className="bg-background flex items-center justify-between px-4 pt-2">
+      <div className="flex items-center justify-between px-6 pb-3 pt-4">
         <h3 className="text-foreground text-base font-semibold">
           {activeView === "chat" ? "Chat" : "Highlights"}
         </h3>
@@ -42,9 +42,7 @@ export function SidePanel({ documentId, currentPage, onJumpToPage }: SidePanelPr
             onClick={() => setActiveView("highlights")}
             className={cn(
               "h-8 w-8 rounded-full",
-              activeView === "highlights"
-                ? "bg-primary text-primary-foreground"
-                : "hover:bg-muted"
+              activeView === "highlights" ? "bg-primary text-primary-foreground" : "hover:bg-muted"
             )}
             title="Highlights"
           >

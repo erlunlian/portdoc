@@ -25,6 +25,7 @@ from schemas.documents import (
     DocumentReadStateResponse,
     DocumentReadStateUpdate,
     DocumentResponse,
+    DocumentUpdate,
     UploadURLResponse,
 )
 from services.ingestion import IngestionService
@@ -214,6 +215,30 @@ async def get_document(
 
     if not document:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+
+    return DocumentResponse.model_validate(document)
+
+
+@router.patch("/documents/{document_id}", response_model=DocumentResponse)
+async def update_document(
+    document_id: str,
+    update: DocumentUpdate,
+    db: AsyncSession = Depends(get_db),
+):
+    """Update a document's metadata"""
+    result = await db.execute(select(Document).where(Document.id == document_id))
+    document = result.scalar_one_or_none()
+
+    if not document:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+
+    # Update document title
+    document.title = update.title
+
+    await db.commit()
+    await db.refresh(document)
+
+    logger.info("Updated document", document_id=str(document_id), title=update.title)
 
     return DocumentResponse.model_validate(document)
 
