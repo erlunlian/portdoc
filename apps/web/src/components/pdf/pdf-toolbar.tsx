@@ -1,7 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut } from "lucide-react";
+import { ChevronLeft, ChevronRight, Maximize, Minimize, ZoomIn, ZoomOut } from "lucide-react";
 import { useState } from "react";
 
 interface PdfToolbarProps {
@@ -12,6 +12,8 @@ interface PdfToolbarProps {
   onZoomIn: () => void;
   onZoomOut: () => void;
   onZoomChange: (scale: number) => void;
+  isFullscreen?: boolean;
+  onToggleFullscreen?: () => void;
 }
 
 const ZOOM_OPTIONS = [
@@ -35,6 +37,8 @@ export function PdfToolbar({
   onZoomIn,
   onZoomOut,
   onZoomChange,
+  isFullscreen = false,
+  onToggleFullscreen,
 }: PdfToolbarProps) {
   const [pageInput, setPageInput] = useState(currentPage.toString());
 
@@ -171,6 +175,17 @@ export function PdfToolbar({
             <ZoomIn className="h-5 w-5" />
           </button>
         </div>
+
+        {/* Fullscreen Button */}
+        {onToggleFullscreen && (
+          <button
+            onClick={onToggleFullscreen}
+            className="rounded-xl p-2 text-gray-600 transition-colors hover:bg-gray-100"
+            aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+          >
+            {isFullscreen ? <Minimize className="h-5 w-5" /> : <Maximize className="h-5 w-5" />}
+          </button>
+        )}
 
         {/* Keyboard Shortcuts Info */}
         <div className="text-xs text-gray-400">

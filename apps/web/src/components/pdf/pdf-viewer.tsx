@@ -53,12 +53,14 @@ export function PdfViewer({
     height: number;
   } | null>(null);
   const [renderError, setRenderError] = useState<Error | null>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const documentRef = useRef<HTMLDivElement>(null);
   const pageRefs = useRef<Map<number, HTMLDivElement>>(new Map());
   const selectionStartRef = useRef<{ x: number; y: number } | null>(null);
   const isProgrammaticScroll = useRef(false);
+  const fullscreenContainerRef = useRef<HTMLDivElement>(null);
 
   // Scroll to specific page
   const scrollToPage = useCallback((page: number) => {
@@ -278,6 +280,35 @@ export function PdfViewer({
     window.getSelection()?.removeAllRanges();
   };
 
+  // Handle fullscreen toggle
+  const toggleFullscreen = useCallback(async () => {
+    if (!fullscreenContainerRef.current) return;
+
+    try {
+      if (!document.fullscreenElement) {
+        await fullscreenContainerRef.current.requestFullscreen();
+        setIsFullscreen(true);
+      } else {
+        await document.exitFullscreen();
+        setIsFullscreen(false);
+      }
+    } catch (error) {
+      console.error("Error toggling fullscreen:", error);
+    }
+  }, []);
+
+  // Listen for fullscreen changes
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    return () => {
+      document.removeEventListener("fullscreenchange", handleFullscreenChange);
+    };
+  }, []);
+
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -292,12 +323,16 @@ export function PdfViewer({
           e.preventDefault();
           handleZoom(DEFAULT_ZOOM);
         }
+      } else if (e.key === "f" || e.key === "F") {
+        // Toggle fullscreen with 'F' key
+        e.preventDefault();
+        toggleFullscreen();
       }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [scale, zoomIn, zoomOut, handleZoom]);
+  }, [scale, zoomIn, zoomOut, handleZoom, toggleFullscreen]);
 
   if (renderError) {
     return (
@@ -311,7 +346,7 @@ export function PdfViewer({
   }
 
   return (
-    <div className="flex h-full w-full flex-col bg-transparent">
+    <div ref={fullscreenContainerRef} className="flex h-full w-full flex-col bg-transparent">
       {/* Toolbar */}
       <div className="w-full flex-shrink-0">
         <PdfToolbar
@@ -322,6 +357,8 @@ export function PdfViewer({
           onZoomIn={zoomIn}
           onZoomOut={zoomOut}
           onZoomChange={handleZoom}
+          isFullscreen={isFullscreen}
+          onToggleFullscreen={toggleFullscreen}
         />
       </div>
 
