@@ -10,7 +10,6 @@ import { Sidebar } from "./components/sidebar";
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const [showSearchCommand, setShowSearchCommand] = useState(false);
 
-
   const { data, isLoading } = useQuery<{
     documents: Document[];
     total: number;
@@ -33,7 +32,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const documents = data?.documents || [];
 
   return (
-    <div className="flex h-screen bg-white">
+    <div className="bg-muted/30 flex h-screen">
       {/* Sidebar */}
       <Sidebar
         documents={documents}

@@ -112,7 +112,7 @@ export default function DocumentPage() {
   }
 
   return (
-    <div className="bg-muted/30 flex h-full flex-col overflow-hidden">
+    <div className="flex h-full flex-col overflow-hidden">
       {/* Floating Header Row */}
       <div className="flex-shrink-0 px-6 pb-3 pt-6">
         <DocumentHeader title={document.title} documentId={documentId} />

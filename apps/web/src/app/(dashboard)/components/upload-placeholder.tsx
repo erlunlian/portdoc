@@ -42,20 +42,26 @@ export function UploadPlaceholder() {
   };
 
   return (
-    <div className="flex items-center justify-center h-full bg-white">
-      <div className="text-center max-w-md">
+    <div className="flex h-full items-center justify-center">
+      <div className="max-w-md text-center">
         <div className="mb-8">
-          <svg className="h-24 w-24 text-gray-300 mx-auto mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+          <svg
+            className="mx-auto mb-4 h-24 w-24 text-gray-300"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={1}
+              d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
+            />
           </svg>
-          <h2 className="text-2xl font-bold text-black mb-2">
-            Upload a PDF to get started
-          </h2>
-          <p className="text-gray-600">
-            Select a document from the sidebar or upload a new one
-          </p>
+          <h2 className="mb-2 text-2xl font-bold text-black">Upload a PDF to get started</h2>
+          <p className="text-gray-600">Select a document from the sidebar or upload a new one</p>
         </div>
-        
+
         {/* Hidden File Input */}
         <input
           ref={fileInputRef}
@@ -65,12 +71,12 @@ export function UploadPlaceholder() {
           className="hidden"
           disabled={uploading}
         />
-        
+
         {/* Upload Button */}
         <button
           onClick={() => fileInputRef.current?.click()}
           disabled={uploading}
-          className="bg-black text-white px-6 py-3 rounded-lg hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="rounded-lg bg-black px-6 py-3 text-white transition-colors hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {uploading ? "Uploading..." : "Choose PDF"}
         </button>
