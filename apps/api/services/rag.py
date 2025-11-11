@@ -1,41 +1,36 @@
 """RAG (Retrieval-Augmented Generation) service for chat"""
 
 import time
-from typing import AsyncGenerator, List, Optional, Tuple
+from collections.abc import AsyncGenerator
 from uuid import UUID
 
 import structlog
-from openai import AsyncAzureOpenAI, AsyncOpenAI
+from openai import AsyncOpenAI
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import settings
-from db.models import ChatRun, Chunk, Message, MessageRole, Thread
+from db.models import ChatRun, Chunk, Message, MessageRole
 from services.embeddings import EmbeddingService
+from services.prompts import (
+    build_rag_system_prompt,
+    build_rag_user_prompt_with_context,
+    build_title_generation_messages,
+)
 
 logger = structlog.get_logger()
 
 
 class RAGService:
-    """Service for retrieval-augmented generation"""
+    """Service for retrieval-augmented generation using Ollama"""
 
     def __init__(self):
-        # Initialize client based on provider
-        if settings.llm_provider == "azure":
-            self.client = AsyncAzureOpenAI(
-                api_key=settings.llm_api_key,
-                azure_endpoint=settings.azure_openai_endpoint,
-                api_version=settings.azure_openai_api_version,
-            )
-            self.model = settings.azure_openai_deployment_name
-            logger.info("Using Azure OpenAI for chat", deployment=self.model)
-        else:
-            self.client = AsyncOpenAI(
-                api_key=settings.llm_api_key,
-                base_url=settings.llm_base_url,
-            )
-            self.model = settings.llm_model
-            logger.info("Using OpenAI for chat", model=self.model)
+        self.client = AsyncOpenAI(
+            api_key="ollama",  # Ollama ignores the key but the SDK requires one
+            base_url=settings.ollama_base_url,
+        )
+        self.model = settings.ollama_model
+        logger.info("Using Ollama for chat", model=self.model, base_url=settings.ollama_base_url)
 
         self.embedding = EmbeddingService()
 
@@ -98,80 +93,83 @@ class RAGService:
         document_id: UUID,
         query: str,
         k: int = 8,
-        page_filter: Optional[Tuple[int, int]] = None,
+        page_filter: tuple[int, int] | None = None,
         db: AsyncSession = None,
-    ) -> List[dict]:
+    ) -> list[dict]:
         """
-        Retrieve relevant chunks using semantic search
-        Returns list of dicts with: chunk_id, page, text, similarity
+        Retrieve relevant chunks using semantic search.
+        Returns list of dicts with: chunk_id, page, text, similarity.
         """
         try:
-            # Generate query embedding
+            # Generate query embedding (1024-dim Ollama embedding)
             query_embedding = await self.embedding.embed_text(query)
 
-            # Build query
-            query_stmt = select(
-                Chunk.id,
-                Chunk.page,
-                Chunk.text,
-                Chunk.embedding.cosine_distance(query_embedding).label("distance"),
-            ).where(Chunk.document_id == document_id)
+            query_stmt = (
+                select(
+                    Chunk.id,
+                    Chunk.page,
+                    Chunk.text,
+                    Chunk.embedding.cosine_distance(query_embedding).label("distance"),
+                )
+                .where(Chunk.document_id == document_id, Chunk.embedding.isnot(None))
+                .order_by("distance")
+                .limit(k)
+            )
 
-            # Apply page filter if provided (page +/- range)
             if page_filter:
                 min_page, max_page = page_filter
                 query_stmt = query_stmt.where(Chunk.page >= min_page, Chunk.page <= max_page)
 
-            # Order by similarity and limit
-            query_stmt = query_stmt.order_by("distance").limit(k)
-
             result = await db.execute(query_stmt)
             rows = result.all()
 
-            chunks = []
-            for row in rows:
-                chunks.append(
-                    {
-                        "chunk_id": str(row.id),
-                        "page": row.page,
-                        "text": row.text,
-                        "similarity": 1 - row.distance,  # Convert distance to similarity
-                    }
-                )
+            chunks = [
+                {
+                    "chunk_id": str(row.id),
+                    "page": row.page,
+                    "text": row.text,
+                    "similarity": 1 - row.distance,
+                }
+                for row in rows
+            ]
 
-            logger.info(f"Retrieved {len(chunks)} chunks for query", document_id=str(document_id))
+            logger.info(
+                "Retrieved chunks for query",
+                document_id=str(document_id),
+                result_count=len(chunks),
+            )
             return chunks
 
         except Exception as e:
-            logger.error("Failed to retrieve chunks", error=str(e))
+            logger.error("Failed to retrieve chunks", error=str(e), exc_info=e)
+            if db is not None:
+                try:
+                    await db.rollback()
+                except Exception as rollback_error:
+                    logger.warning(
+                        "Rollback failed after chunk retrieval error",
+                        rollback_error=str(rollback_error),
+                        exc_info=rollback_error,
+                    )
             return []
 
-    def build_system_prompt(self, chunks: List[dict]) -> str:
+    def build_system_prompt(self, chunks: list[dict]) -> str:
         """Build system prompt with retrieved chunks"""
-        context = "\n\n".join([f"[Page {chunk['page']}]\n{chunk['text']}" for chunk in chunks])
-
-        system_prompt = f"""You are a helpful AI assistant that answers questions about a PDF document.
-
-Your task is to answer questions based ONLY on the provided context from the document.
-
-Context from the document:
-{context}
-
-Guidelines:
-- Always cite the page number when referencing information (e.g., "According to page 5...")
-- If the answer is not in the provided context, clearly state "I don't have enough information in the document to answer that question."
-- Be concise and accurate
-- If multiple pages contain relevant information, cite all of them
-- Do not make up information or use external knowledge"""
-
+        system_prompt = build_rag_system_prompt(chunks)
+        logger.info(
+            "Built system prompt",
+            num_chunks=len(chunks),
+            prompt_length=len(system_prompt),
+            has_content=bool(chunks),
+        )
         return system_prompt
 
     async def generate_response(
         self,
         thread_id: UUID,
         user_message: str,
-        chunks: List[dict],
-        message_history: List[Message],
+        chunks: list[dict],
+        message_history: list[Message],
         db: AsyncSession,
     ) -> AsyncGenerator[str, None]:
         """
@@ -182,8 +180,8 @@ Guidelines:
         start_time = time.time()
 
         try:
-            # Build system prompt with retrieved chunks
-            system_prompt = self.build_system_prompt(chunks)
+            # Build system prompt (instructions only, no context - that goes in user message)
+            system_prompt = "You are a helpful AI assistant that answers questions about PDF documents. Always cite page numbers when referencing information from the document. Answer based ONLY on the provided context."
 
             # Build messages for API
             messages = [{"role": "system", "content": system_prompt}]
@@ -202,8 +200,19 @@ Guidelines:
                         }
                     )
 
-            # Add current user message
-            messages.append({"role": "user", "content": user_message})
+            # Add current user message WITH context (standard RAG approach)
+            user_message_with_context = build_rag_user_prompt_with_context(user_message, chunks)
+            messages.append({"role": "user", "content": user_message_with_context})
+
+            # Log what we're sending to the LLM
+            logger.info(
+                "Sending messages to LLM",
+                num_messages=len(messages),
+                num_chunks=len(chunks),
+                system_prompt_length=len(messages[0]["content"]) if messages else 0,
+                user_message_with_context_length=len(user_message_with_context),
+                original_user_message=user_message[:100],
+            )
 
             # Call LLM API with streaming
             try:
@@ -296,7 +305,7 @@ Guidelines:
             # Log chat run for observability
             chat_run = ChatRun(
                 thread_id=thread_id,
-                provider="openai",
+                provider="ollama",
                 model=self.model,
                 latency_ms=latency_ms,
                 cost_usd=self._estimate_cost(tokens_prompt, tokens_completion),
@@ -314,22 +323,22 @@ Guidelines:
             )
 
         except Exception as e:
+            if db is not None:
+                try:
+                    await db.rollback()
+                except Exception as rollback_error:
+                    logger.warning(
+                        "Rollback failed after generation error",
+                        rollback_error=str(rollback_error),
+                        exc_info=rollback_error,
+                    )
             logger.error("Failed to generate response", error=str(e), exc_info=e)
             yield f"\n\n[Error: Failed to generate response - {str(e)}]"
 
     async def generate_thread_title(self, user_message: str) -> str:
         """Generate a concise title for a thread based on the first user message"""
         try:
-            messages = [
-                {
-                    "role": "system",
-                    "content": "You are a helpful assistant that generates concise, descriptive titles. Generate a title that is exactly 4 words or less. Return only the title text, no quotes or punctuation.",
-                },
-                {
-                    "role": "user",
-                    "content": f"Generate a concise title (maximum 4 words) for a conversation that starts with this message:\n\n{user_message[:500]}",
-                },
-            ]
+            messages = build_title_generation_messages(user_message)
 
             # Try different parameter combinations
             response = None
@@ -370,12 +379,5 @@ Guidelines:
             return "New Chat"
 
     def _estimate_cost(self, tokens_prompt: int, tokens_completion: int) -> float:
-        """Estimate cost in USD (rough estimates for GPT-4)"""
-        # These are example rates - adjust based on actual model pricing
-        cost_per_1k_prompt = 0.01  # $0.01 per 1K prompt tokens
-        cost_per_1k_completion = 0.03  # $0.03 per 1K completion tokens
-
-        cost = (tokens_prompt / 1000 * cost_per_1k_prompt) + (
-            tokens_completion / 1000 * cost_per_1k_completion
-        )
-        return round(cost, 6)
+        """Ollama runs locally; report zero cost."""
+        return 0.0

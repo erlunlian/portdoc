@@ -8,8 +8,18 @@ export class APIClient {
     const supabase = createClient();
     const {
       data: { session },
+      error,
     } = await supabase.auth.getSession();
-    return session?.access_token || null;
+
+    if (error) {
+      return null;
+    }
+
+    if (!session) {
+      return null;
+    }
+
+    return session.access_token || null;
   }
 
   private async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
@@ -21,6 +31,8 @@ export class APIClient {
 
     if (token) {
       headers["Authorization"] = `Bearer ${token}`;
+    } else {
+      throw new Error("Authentication required. Please log in.");
     }
 
     const response = await fetch(`${API_BASE_URL}${endpoint}`, {
@@ -29,6 +41,42 @@ export class APIClient {
     });
 
     if (!response.ok) {
+      // Handle 401 specifically
+      if (response.status === 401) {
+        const supabase = createClient();
+        // Try to refresh the session
+        const {
+          data: { session: refreshedSession },
+          error: refreshError,
+        } = await supabase.auth.refreshSession();
+
+        if (refreshError || !refreshedSession) {
+          // Redirect to login
+          if (typeof window !== "undefined") {
+            window.location.href = "/auth/login";
+          }
+          throw new Error("Session expired. Please log in again.");
+        }
+
+        // Retry the request with the new token
+        headers["Authorization"] = `Bearer ${refreshedSession.access_token}`;
+        const retryResponse = await fetch(`${API_BASE_URL}${endpoint}`, {
+          ...options,
+          headers,
+        });
+
+        if (!retryResponse.ok) {
+          const error = await retryResponse.json().catch(() => ({ detail: "Request failed" }));
+          throw new Error(error.detail || `HTTP ${retryResponse.status}`);
+        }
+
+        if (retryResponse.status === 204) {
+          return {} as T;
+        }
+
+        return retryResponse.json();
+      }
+
       const error = await response.json().catch(() => ({ detail: "Request failed" }));
       throw new Error(error.detail || `HTTP ${response.status}`);
     }
@@ -47,6 +95,8 @@ export class APIClient {
 
     if (token) {
       headers["Authorization"] = `Bearer ${token}`;
+    } else {
+      throw new Error("Authentication required. Please log in.");
     }
 
     const response = await fetch(`${API_BASE_URL}${endpoint}`, {
@@ -56,6 +106,37 @@ export class APIClient {
     });
 
     if (!response.ok) {
+      // Handle 401 specifically
+      if (response.status === 401) {
+        const supabase = createClient();
+        const {
+          data: { session: refreshedSession },
+          error: refreshError,
+        } = await supabase.auth.refreshSession();
+
+        if (refreshError || !refreshedSession) {
+          if (typeof window !== "undefined") {
+            window.location.href = "/auth/login";
+          }
+          throw new Error("Session expired. Please log in again.");
+        }
+
+        // Retry the request with the new token
+        headers["Authorization"] = `Bearer ${refreshedSession.access_token}`;
+        const retryResponse = await fetch(`${API_BASE_URL}${endpoint}`, {
+          method: "POST",
+          headers,
+          body: formData,
+        });
+
+        if (!retryResponse.ok) {
+          const error = await retryResponse.json().catch(() => ({ detail: "Request failed" }));
+          throw new Error(error.detail || `HTTP ${retryResponse.status}`);
+        }
+
+        return retryResponse.json();
+      }
+
       const error = await response.json().catch(() => ({ detail: "Request failed" }));
       throw new Error(error.detail || `HTTP ${response.status}`);
     }
@@ -90,13 +171,18 @@ export class APIClient {
     return this.request(`/documents/${documentId}/read-state`);
   }
 
-  async updateReadState(documentId: string, lastPage: number, scale: number | null | undefined, isRead: boolean) {
+  async updateReadState(
+    documentId: string,
+    lastPage: number,
+    scale: number | null | undefined,
+    isRead: boolean
+  ) {
     return this.request(`/documents/${documentId}/read-state`, {
       method: "PUT",
-      body: JSON.stringify({ 
-        last_page: lastPage, 
+      body: JSON.stringify({
+        last_page: lastPage,
         scale: scale,
-        is_read: isRead 
+        is_read: isRead,
       }),
     });
   }
@@ -157,7 +243,7 @@ export class APIClient {
     if (pageContext) {
       params.append("page_context", pageContext.toString());
     }
-    
+
     // This returns a streaming response, so we'll handle it differently
     const token = await this.getAuthToken();
     const headers: Record<string, string> = {};

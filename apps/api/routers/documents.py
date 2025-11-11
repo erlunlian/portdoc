@@ -92,10 +92,14 @@ async def upload_document(
         async def ingest_uploaded_document(doc_id: UUID):
             """Background task to automatically ingest the uploaded document"""
             try:
-                logger.info("Starting automatic ingestion for uploaded document", document_id=str(doc_id))
+                logger.info(
+                    "Starting automatic ingestion for uploaded document", document_id=str(doc_id)
+                )
                 result = await ingestion_service.ingest_document(doc_id, None)
                 if result:
-                    logger.info("Automatic ingestion completed successfully", document_id=str(doc_id))
+                    logger.info(
+                        "Automatic ingestion completed successfully", document_id=str(doc_id)
+                    )
                 else:
                     logger.error("Automatic ingestion failed", document_id=str(doc_id))
             except Exception as e:
@@ -162,7 +166,9 @@ async def ingest_document(
             import sys
             import traceback
 
-            print(f"ERROR: Background task failed for document {doc_id}: {e}", file=sys.stderr)
+            logger.error(
+                f"ERROR: Background task failed for document {doc_id}: {e}", file=sys.stderr
+            )
             traceback.print_exc(file=sys.stderr)
 
     # Add ingestion task to background

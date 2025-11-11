@@ -24,11 +24,23 @@ class AuthService:
     @staticmethod
     def verify_token(token: str) -> dict:
         """Verify Supabase JWT token"""
+        # IMPORTANT: Supabase Auth uses JWT_SECRET, so prioritize that over SUPABASE_JWT_SECRET
+        jwt_secret = settings.jwt_secret or settings.supabase_jwt_secret
+
+        if not jwt_secret:
+            logger.error(
+                "JWT secret not configured - check SUPABASE_JWT_SECRET or JWT_SECRET in .env"
+            )
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="JWT secret not configured",
+            )
+
         try:
             # Decode and verify the JWT
             payload = jwt.decode(
                 token,
-                settings.supabase_jwt_secret,
+                jwt_secret,
                 algorithms=["HS256"],
                 audience="authenticated",
             )
@@ -68,6 +80,12 @@ async def get_current_user(
     db: AsyncSession = Depends(get_db),
 ) -> User:
     """FastAPI dependency to get current authenticated user"""
+    if not credentials:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authorization header required",
+        )
+
     token = credentials.credentials
 
     # Verify token and extract claims

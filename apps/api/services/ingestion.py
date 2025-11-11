@@ -22,7 +22,7 @@ class IngestionService:
     def __init__(self):
         self.storage = StorageService()
         self.embedding = EmbeddingService()
-        self.encoding = tiktoken.get_encoding("cl100k_base")  # For GPT-4
+        self.encoding = tiktoken.get_encoding("cl100k_base")  # OpenAI-compatible tokenizer
         self.chunk_size = 1000  # tokens
         self.chunk_overlap = 200  # tokens
 

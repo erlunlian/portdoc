@@ -1,11 +1,10 @@
+# isort: skip_file
 import enum
 from datetime import datetime
-from typing import Optional
 from uuid import UUID, uuid4
 
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
-    JSON,
     BigInteger,
     Boolean,
     DateTime,
@@ -14,6 +13,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    JSON,
     String,
     Text,
     func,
@@ -113,7 +113,7 @@ class DocumentReadState(Base):
         ForeignKey("documents.id", ondelete="CASCADE"), nullable=False
     )
     last_page: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
-    scale: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    scale: Mapped[float | None] = mapped_column(Float, nullable=True)
     is_read: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now(), onupdate=func.now()
@@ -196,9 +196,9 @@ class Message(Base):
     )
     role: Mapped[MessageRole] = mapped_column(Enum(MessageRole), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
-    tokens_prompt: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    tokens_completion: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    message_metadata: Mapped[Optional[dict]] = mapped_column(
+    tokens_prompt: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    tokens_completion: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    message_metadata: Mapped[dict | None] = mapped_column(
         "metadata", JSON, nullable=True
     )  # For chunk_ids, pages, etc.
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
@@ -221,7 +221,8 @@ class Chunk(Base):
     page: Mapped[int] = mapped_column(Integer, nullable=False)
     chunk_index: Mapped[int] = mapped_column(Integer, nullable=False)
     text: Mapped[str] = mapped_column(Text, nullable=False)
-    embedding: Mapped[Optional[Vector]] = mapped_column(Vector(1536), nullable=True)
+    # Ollama embeddings (1024-dimensional vectors)
+    embedding: Mapped[Vector | None] = mapped_column(Vector(1024), nullable=True)
     token_count: Mapped[int] = mapped_column(Integer, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
@@ -230,7 +231,12 @@ class Chunk(Base):
 
     __table_args__ = (
         Index("ix_chunks_document_id", "document_id"),
-        Index("ix_chunks_embedding", "embedding", postgresql_using="ivfflat"),
+        Index(
+            "ix_chunks_embedding",
+            "embedding",
+            postgresql_using="ivfflat",
+            postgresql_with={"lists": 100},
+        ),
     )
 
 
@@ -246,7 +252,7 @@ class ChatRun(Base):
     provider: Mapped[str] = mapped_column(String(100), nullable=False)
     model: Mapped[str] = mapped_column(String(100), nullable=False)
     latency_ms: Mapped[float] = mapped_column(Float, nullable=False)
-    cost_usd: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    cost_usd: Mapped[float | None] = mapped_column(Float, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
     # Relationships

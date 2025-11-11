@@ -1,8 +1,19 @@
+from pathlib import Path
+
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Get the root directory (2 levels up from this file)
+ROOT_DIR = Path(__file__).parent.parent.parent
+ENV_FILE = ROOT_DIR / ".env"
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", case_sensitive=False)
+    model_config = SettingsConfigDict(
+        env_file=str(ENV_FILE),
+        case_sensitive=False,
+        extra="ignore",  # Ignore extra fields from .env that are only used by Docker Compose
+    )
 
     # Database
     database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:54322/postgres"
@@ -10,34 +21,24 @@ class Settings(BaseSettings):
     # Supabase
     supabase_url: str = "http://localhost:54321"
     supabase_service_role_key: str = ""
+    # JWT secret - can be SUPABASE_JWT_SECRET or JWT_SECRET (Supabase uses JWT_SECRET)
     supabase_jwt_secret: str = ""
+    jwt_secret: str = ""  # Fallback to match Supabase's JWT_SECRET
     storage_bucket: str = "pdfs"
 
-    # LLM Configuration
-    llm_provider: str = "azure"  # "azure" or "openai"
-    llm_api_key: str = ""
-
-    # Azure OpenAI
-    azure_openai_endpoint: str = ""
-    azure_openai_api_version: str = "2024-02-15-preview"
-    azure_openai_deployment_name: str = "gpt-4"
-
-    # Standard OpenAI (fallback)
-    llm_base_url: str = "https://api.openai.com/v1"
-    llm_model: str = "gpt-4-turbo-preview"
+    # Ollama (local)
+    ollama_base_url: str = "http://localhost:11434/v1"
+    ollama_model: str = "gpt-oss:20b"
 
     # Embeddings Configuration
-    embedding_api_key: str = ""
+    ollama_embedding_model: str = "mxbai-embed-large"
+    embedding_dimension: int = 1024
 
-    # Azure OpenAI Embeddings
-    azure_embedding_endpoint: str = ""
-    azure_embedding_api_version: str = "2024-02-15-preview"
-    azure_embedding_deployment_name: str = "text-embedding-ada-002"
-
-    # Standard OpenAI Embeddings (fallback)
-    embedding_base_url: str = "https://api.openai.com/v1"
-    embedding_model: str = "text-embedding-3-small"
-    embedding_dimension: int = 1536
+    @model_validator(mode="after")
+    def set_embedding_dimension(self):
+        """Ensure embedding dimension matches the configured Ollama embedding model."""
+        self.embedding_dimension = 1024
+        return self
 
     # App
     environment: str = "development"

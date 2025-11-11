@@ -30,7 +30,7 @@ A production-ready PDF reading and study application with AI-powered chat, highl
 - **Alembic** - Database migrations
 - **PostgreSQL + pgvector** - Database with vector search
 - **PyMuPDF** - PDF text extraction
-- **OpenAI / Azure OpenAI** - LLM and embeddings (configurable)
+- **Ollama** - Local LLM and embeddings
 - **Supabase** - Auth, Storage, and Database
 
 ## Project Structure
@@ -63,14 +63,14 @@ A production-ready PDF reading and study application with AI-powered chat, highl
 └── scripts/                 # Development scripts
 ```
 
-## Getting Started
+## How to Run
 
 ### Prerequisites
 
 - Node.js 18+ and pnpm
 - Python 3.11+
 - Docker and Docker Compose
-- **Azure OpenAI** API key and endpoint, OR **OpenAI** API key
+- Ollama (local LLM/embeddings provider)
 
 ### Quick Start
 
@@ -94,53 +94,28 @@ A production-ready PDF reading and study application with AI-powered chat, highl
 
 3. **Setup environment variables**
    ```bash
-   # Root .env
+   # Root .env (used by both Docker Compose and API)
    cp .env.example .env
    
    # Frontend
    cp apps/web/.env.local.example apps/web/.env.local
-   
-   # Backend
-   cp apps/api/.env.example apps/api/.env
-   
-   # Docker infrastructure
-   cp infra/.env.example infra/.env
    ```
 
-   Fill in the required values (especially JWT secrets and API keys).
+   Fill in the required values (especially JWT secrets and API keys). See the [Configuration](#configuration) section for details.
 
-   **For Azure OpenAI users**: The default configuration is set for Azure OpenAI. Update these values:
-   - `LLM_API_KEY` - Your Azure OpenAI API key
-   - `AZURE_OPENAI_ENDPOINT` - Your Azure OpenAI endpoint (e.g., `https://your-resource.openai.azure.com/`)
-   - `AZURE_OPENAI_DEPLOYMENT_NAME` - Your GPT-4 deployment name
-   - `AZURE_EMBEDDING_DEPLOYMENT_NAME` - Your embedding model deployment name
-   
-   **For standard OpenAI users**: Change `LLM_PROVIDER=openai` and set:
-   - `LLM_API_KEY` - Your OpenAI API key (starts with `sk-`)
-   - `LLM_MODEL` - Model name (e.g., `gpt-4-turbo-preview`)
-   - `EMBEDDING_MODEL` - Embedding model (e.g., `text-embedding-3-small`)
-
-4. **Start local Supabase stack**
+4. **Start infrastructure**
    ```bash
    cd infra
    docker-compose up -d
    ```
 
-   This starts:
-   - PostgreSQL with pgvector (port 54322)
-   - Supabase Studio (port 54323)
-   - Supabase Auth, Storage, Realtime
-   - Kong API Gateway (port 54321)
-
 5. **Run database migrations**
    ```bash
    cd apps/api
+   source venv/bin/activate
    alembic upgrade head
-   ```
-
-   Then run the RLS setup SQL:
-   ```bash
    psql postgresql://postgres:postgres@localhost:54322/postgres < ../../infra/supabase/setup_rls.sql
+   psql postgresql://postgres:postgres@localhost:54322/postgres < ../../infra/supabase/setup_storage.sql
    ```
 
 6. **Start development servers**
@@ -163,6 +138,252 @@ A production-ready PDF reading and study application with AI-powered chat, highl
    - API Docs: http://localhost:8000/docs
    - Supabase Studio: http://localhost:54323
 
+## How to Set Up Local Dev Environment
+
+This section provides detailed instructions for setting up the development environment from scratch.
+
+### Prerequisites
+
+- **Node.js** 18+ and **pnpm** 8+
+- **Python** 3.11+
+- **Docker** and **Docker Compose**
+- **Ollama** installed locally (models are downloaded on first run)
+
+### Step 1: Install Dependencies
+
+```bash
+# Install frontend dependencies
+pnpm install
+
+# Install backend dependencies
+cd apps/api
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+pip install -r requirements.txt
+cd ../..
+```
+
+### Step 2: Configure Environment Variables
+
+The root `.env` file has been created with sensible defaults for local development and is now **Ollama-only**. There is a single `.env` file at the root of the project used by both Docker Compose and the FastAPI backend.
+
+#### Configure Ollama (required)
+
+Install and start Ollama locally:
+
+1. **Install Ollama**:
+   - Visit https://ollama.ai and download for your OS
+   - Or use Homebrew on macOS: `brew install ollama`
+   - Or use the install script: `curl -fsSL https://ollama.ai/install.sh | sh`
+
+2. **Start Ollama service**:
+   ```bash
+   # Ollama usually starts automatically, but you can start it manually:
+   ollama serve
+   ```
+   The service runs on `http://localhost:11434` by default.
+
+3. **Pull the models**:
+   ```bash
+   # Pull the chat model (this downloads it locally)
+   ollama pull gemma3:12b
+   
+   # Pull the embedding model
+   ollama pull mxbai-embed-large
+   ```
+
+4. **Verify Ollama is running**:
+   ```bash
+   curl http://localhost:11434/api/tags
+   ```
+   You should see a list of available models.
+
+5. **Verify `.env` configuration** (already set by default):
+
+   ```bash
+   OLLAMA_BASE_URL=http://localhost:11434/v1
+   OLLAMA_MODEL=gemma3:12b
+   OLLAMA_EMBEDDING_MODEL=mxbai-embed-large
+   ```
+
+**Note**: Ollama models need to be downloaded locally, which can take several GB of disk space. Make sure you have enough space and a good internet connection for the initial download.
+
+#### Frontend Configuration
+
+The file `apps/web/.env.local` is already configured for local development and doesn't need changes.
+
+### Step 3: Start Supabase and Infrastructure
+
+```bash
+cd infra
+docker-compose up -d
+```
+
+This starts:
+- PostgreSQL with pgvector (port 54322)
+- Supabase Auth, Storage, and Realtime
+- Supabase Studio (port 54323)
+- Kong API Gateway (port 54321)
+
+**Wait about 30 seconds** for all services to be ready.
+
+### Step 4: Run Database Migrations
+
+```bash
+cd apps/api
+source venv/bin/activate  # If not already activated
+alembic upgrade head
+```
+
+### Step 5: Setup Row Level Security (RLS) Policies
+
+```bash
+# From the project root
+psql postgresql://postgres:postgres@localhost:54322/postgres < infra/supabase/setup_rls.sql
+```
+
+If you don't have `psql` installed, you can run the SQL via Supabase Studio:
+1. Open http://localhost:54323
+2. Go to SQL Editor
+3. Paste the contents of `infra/supabase/setup_rls.sql`
+4. Run the query
+
+### Step 6: Setup Storage Bucket
+
+The storage bucket needs to be created. Run this SQL via Supabase Studio or psql:
+
+```bash
+psql postgresql://postgres:postgres@localhost:54322/postgres < infra/supabase/setup_storage.sql
+```
+
+### Step 7: Start the Backend API
+
+```bash
+# In one terminal
+cd apps/api
+source venv/bin/activate
+uvicorn main:app --reload --port 8000
+```
+
+The API will be available at:
+- API: http://localhost:8000
+- API Docs: http://localhost:8000/docs
+
+### Step 8: Start the Frontend
+
+```bash
+# In another terminal
+cd apps/web
+pnpm dev
+```
+
+The frontend will be available at: http://localhost:3000
+
+### Verify Setup
+
+1. **Check Supabase Studio**: http://localhost:54323
+   - You should see all the tables (users, documents, chunks, etc.)
+
+2. **Check API Docs**: http://localhost:8000/docs
+   - You should see all the endpoints
+
+3. **Open the App**: http://localhost:3000
+   - You should be redirected to the login page
+
+4. **Create an Account**:
+   - Click "Sign up"
+   - Enter an email and password
+   - You should be logged in and see the dashboard
+
+### Troubleshooting
+
+#### Port Already in Use
+
+If you get "port already in use" errors:
+```bash
+# Check what's using the port
+lsof -i :54322  # or :54321, :8000, :3000
+# Kill the process or stop Docker containers
+docker-compose down
+```
+
+#### Database Connection Error
+
+If the API can't connect to the database:
+```bash
+# Check if PostgreSQL is running
+docker-compose ps
+# Restart if needed
+docker-compose restart db
+```
+
+#### JWT Verification Fails
+
+Make sure the `SUPABASE_JWT_SECRET` and `JWT_SECRET` are set correctly in the root `.env` file.
+
+#### LLM Issues (Ollama)
+
+- Verify Ollama is running: `curl http://localhost:11434/api/tags`
+- Check that the model is pulled: `ollama list`
+- If a model is missing, pull it: `ollama pull <model-name>`
+- Ensure the service is accessible: `curl http://localhost:11434/api/version`
+- Inspect logs if issues persist: `ollama logs`
+- Confirm the model names in `.env` match the pulled models (case-sensitive)
+
+#### Storage Upload Fails
+
+Make sure the storage bucket exists:
+```sql
+-- Run in Supabase Studio SQL Editor
+SELECT * FROM storage.buckets WHERE id = 'pdfs';
+```
+
+If it doesn't exist, run the `setup_storage.sql` script again.
+
+### Development Workflow
+
+#### Running Everything
+
+```bash
+# Terminal 1: Infrastructure
+cd infra && docker-compose up
+
+# Terminal 2: Backend
+cd apps/api && source venv/bin/activate && uvicorn main:app --reload
+
+# Terminal 3: Frontend
+cd apps/web && pnpm dev
+```
+
+#### Viewing Logs
+
+```bash
+# Supabase logs
+docker-compose logs -f
+
+# Specific service
+docker-compose logs -f db
+docker-compose logs -f auth
+```
+
+#### Accessing Services
+
+- **Frontend**: http://localhost:3000
+- **Backend API**: http://localhost:8000
+- **API Docs**: http://localhost:8000/docs
+- **Supabase Studio**: http://localhost:54323
+- **PostgreSQL**: localhost:54322
+
+#### Stopping Services
+
+```bash
+# Stop Docker services
+cd infra && docker-compose down
+
+# To also remove volumes (clears database)
+docker-compose down -v
+```
+
 ## Configuration
 
 ### Environment Variables
@@ -172,41 +393,49 @@ A production-ready PDF reading and study application with AI-powered chat, highl
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY` - Supabase anon key
 - `NEXT_PUBLIC_API_BASE_URL` - Backend API URL
 
-#### Backend (`apps/api/.env`)
+#### Backend & Infrastructure (Root `.env`)
+This single `.env` file at the root is used by both Docker Compose and the FastAPI backend.
+
+**Database & Supabase:**
 - `DATABASE_URL` - PostgreSQL connection string
+- `POSTGRES_PASSWORD` - PostgreSQL password for Docker services
 - `SUPABASE_URL` - Supabase project URL
+- `SUPABASE_PUBLIC_URL` - Supabase public URL
 - `SUPABASE_SERVICE_ROLE_KEY` - Supabase service role key
 - `SUPABASE_JWT_SECRET` - JWT secret for token verification
-- `LLM_PROVIDER` - Set to `azure` or `openai`
-- **Azure OpenAI**:
-  - `LLM_API_KEY` - Azure OpenAI API key
-  - `AZURE_OPENAI_ENDPOINT` - Azure OpenAI endpoint URL
-  - `AZURE_OPENAI_DEPLOYMENT_NAME` - Your GPT deployment name
-  - `AZURE_EMBEDDING_DEPLOYMENT_NAME` - Your embedding deployment name
-- **Standard OpenAI** (if `LLM_PROVIDER=openai`):
-  - `LLM_API_KEY` - OpenAI API key
-  - `LLM_MODEL` - Model name (e.g., gpt-4-turbo-preview)
-  - `EMBEDDING_MODEL` - Embedding model (e.g., text-embedding-3-small)
+- `ANON_KEY` - Supabase anonymous key (for Docker services)
+- `SERVICE_ROLE_KEY` - Supabase service role key (for Docker services)
+- `JWT_SECRET` - JWT secret (for Docker services)
 - `STORAGE_BUCKET` - Supabase storage bucket name (default: pdfs)
 
-### Azure OpenAI Setup
+**LLM Configuration (Ollama only):**
+- `OLLAMA_BASE_URL` - Ollama API URL (default: http://localhost:11434/v1)
+- `OLLAMA_MODEL` - Chat model name (default: gemma3:12b)
+- `OLLAMA_EMBEDDING_MODEL` - Embedding model name (default: mxbai-embed-large)
 
-The app is configured by default to use Azure OpenAI. To set it up:
+**Application Configuration:**
+- `ENVIRONMENT` - Environment name (default: development)
+- `LOG_LEVEL` - Logging level (default: INFO)
+- `CORS_ORIGINS` - CORS allowed origins (JSON array string)
 
-1. **Create Azure OpenAI Resource** in Azure Portal
-2. **Deploy Models**:
-   - Deploy a chat model (e.g., GPT-4, GPT-3.5-turbo) 
-   - Deploy an embedding model (text-embedding-ada-002)
-   - Note your deployment names
-3. **Get Credentials** from Azure Portal:
-   - API Key (Keys and Endpoint section)
-   - Endpoint URL (e.g., `https://your-resource.openai.azure.com/`)
-4. **Update `.env` files** with your Azure values
+**Docker Compose / Supabase Auth:**
+- `SITE_URL` - Site URL for auth redirects
+- `API_EXTERNAL_URL` - External API URL
+- `DISABLE_SIGNUP` - Disable user signup
+- `ENABLE_EMAIL_SIGNUP` - Enable email signup
+- `ENABLE_EMAIL_AUTOCONFIRM` - Auto-confirm email signups
+- `PGRST_DB_SCHEMAS` - PostgREST database schemas
 
-**To switch to standard OpenAI instead:**
-1. Set `LLM_PROVIDER=openai` in your `.env` files
-2. Update with OpenAI API key and models
-3. Comment out Azure-specific variables
+### Ollama Setup Checklist
+
+1. Install Ollama from https://ollama.ai
+2. Pull the required models: 
+   ```bash
+   ollama pull gemma3:12b
+   ollama pull mxbai-embed-large
+   ```
+3. Start the Ollama service (runs automatically on most systems)
+4. Verify Ollama is running: `curl http://localhost:11434/api/tags`
 
 ### Supabase Setup (Hosted)
 
@@ -362,7 +591,7 @@ Use hosted Supabase for production:
 
 **PostgreSQL connection error**:
 - Check Docker containers are running: `docker-compose ps`
-- Verify DATABASE_URL in .env
+- Verify DATABASE_URL in the root `.env` file
 
 **Authentication failing**:
 - Check JWT_SECRET matches between Supabase and API
@@ -370,7 +599,7 @@ Use hosted Supabase for production:
 
 **PDF upload fails**:
 - Check storage bucket exists and RLS policies are set
-- Verify SUPABASE_SERVICE_ROLE_KEY is set in backend
+- Verify SUPABASE_SERVICE_ROLE_KEY is set in the root `.env` file
 
 **Embeddings/Chat not working**:
 - Verify LLM_API_KEY is valid
@@ -395,7 +624,5 @@ For issues and questions, please open an issue on GitHub.
 
 ## Additional Documentation
 
-- **Azure OpenAI Setup**: See `docs/AZURE_OPENAI.md` for detailed Azure OpenAI configuration
-- **Local Development**: See `SETUP.md` for step-by-step local setup guide
 - **API Documentation**: Available at `http://localhost:8000/docs` when running locally
 
