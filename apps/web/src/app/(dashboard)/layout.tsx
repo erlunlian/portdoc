@@ -3,12 +3,25 @@
 import { apiClient } from "@/lib/api/client";
 import type { Document } from "@/types/api";
 import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { SearchCommand } from "./components/search-command";
 import { Sidebar } from "./components/sidebar";
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const [showSearchCommand, setShowSearchCommand] = useState(false);
+
+  // Add Cmd+K / Ctrl+K keyboard shortcut
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+        e.preventDefault();
+        setShowSearchCommand((prev) => !prev);
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, []);
 
   const { data, isLoading } = useQuery<{
     documents: Document[];
