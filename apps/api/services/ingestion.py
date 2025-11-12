@@ -1,8 +1,10 @@
 """PDF ingestion service for text extraction and chunking"""
 
+import re
 from uuid import UUID
 
 import fitz  # PyMuPDF
+import httpx
 import structlog
 import tiktoken
 from sqlalchemy import select, update
@@ -25,6 +27,62 @@ class IngestionService:
         self.encoding = tiktoken.get_encoding("cl100k_base")  # OpenAI-compatible tokenizer
         self.chunk_size = 1000  # tokens
         self.chunk_overlap = 200  # tokens
+
+    def parse_arxiv_id(self, arxiv_url: str) -> str | None:
+        """
+        Extract arxiv paper ID from URL
+        Supports formats like:
+        - https://arxiv.org/abs/2301.07041
+        - https://arxiv.org/pdf/2301.07041.pdf
+        - arxiv.org/abs/2301.07041
+        - 2301.07041
+        """
+        # Remove whitespace
+        arxiv_url = arxiv_url.strip()
+
+        # Pattern to match arxiv ID (YYMM.NNNNN or YYMM.NNNNNV)
+        arxiv_id_pattern = r"(\d{4}\.\d{4,5}(?:v\d+)?)"
+
+        match = re.search(arxiv_id_pattern, arxiv_url)
+        if match:
+            return match.group(1)
+
+        return None
+
+    async def download_arxiv_pdf(self, arxiv_url: str) -> tuple[bytes, str]:
+        """
+        Download PDF from arxiv URL
+        Returns (pdf_bytes, title)
+        """
+        arxiv_id = self.parse_arxiv_id(arxiv_url)
+        if not arxiv_id:
+            raise ValueError(f"Invalid arxiv URL: {arxiv_url}")
+
+        # Remove version suffix if present for the download URL
+        arxiv_id_no_version = re.sub(r"v\d+$", "", arxiv_id)
+
+        # Construct PDF download URL
+        pdf_url = f"https://arxiv.org/pdf/{arxiv_id_no_version}.pdf"
+
+        logger.info("Downloading arxiv PDF", arxiv_id=arxiv_id, url=pdf_url)
+
+        async with httpx.AsyncClient(timeout=60.0, follow_redirects=True) as client:
+            response = await client.get(pdf_url)
+            response.raise_for_status()
+
+            if response.headers.get("content-type") != "application/pdf":
+                raise ValueError(f"URL did not return a PDF: {pdf_url}")
+
+            # Use arxiv ID as title
+            title = f"arxiv:{arxiv_id}"
+
+            logger.info(
+                "Successfully downloaded arxiv PDF",
+                arxiv_id=arxiv_id,
+                size_bytes=len(response.content),
+            )
+
+            return response.content, title
 
     def extract_text_from_pdf(self, pdf_bytes: bytes) -> tuple[list[str], int]:
         """
