@@ -30,7 +30,7 @@ interface Selection {
 }
 
 const ZOOM_LEVELS = [0.5, 0.75, 1, 1.25, 1.5, 2, 2.5, 3, 4, 5];
-const DEFAULT_ZOOM = 1;
+const DEFAULT_ZOOM = 1.5;
 
 export function PdfViewer({
   url,
@@ -302,16 +302,12 @@ export function PdfViewer({
           e.preventDefault();
           handleZoom(DEFAULT_ZOOM);
         }
-      } else if (e.key === "f" || e.key === "F") {
-        // Toggle fullscreen with 'F' key
-        e.preventDefault();
-        toggleFullscreen();
       }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [scale, zoomIn, zoomOut, handleZoom, toggleFullscreen]);
+  }, [scale, zoomIn, zoomOut, handleZoom]);
 
   if (renderError) {
     return (

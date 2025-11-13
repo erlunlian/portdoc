@@ -498,36 +498,42 @@ export function ChatPanel({
   };
 
   return (
-    <div className="flex h-full w-full flex-col">
+    <div className="flex h-full w-full flex-col overflow-hidden">
       {/* Header with thread tabs and actions */}
-      <ThreadTabs
-        threads={threads}
-        selectedThreadId={selectedThreadId}
-        onThreadSelect={handleThreadSelect}
-        onCreateThread={handleNewChat}
-        onDeleteThread={handleDeleteThread}
-        showArchive={showArchive}
-        onToggleArchive={() => setShowArchive(!showArchive)}
-        hasPendingNewChat={hasPendingNewChat}
-      />
+      <div className="flex-shrink-0">
+        <ThreadTabs
+          threads={threads}
+          selectedThreadId={selectedThreadId}
+          onThreadSelect={handleThreadSelect}
+          onCreateThread={handleNewChat}
+          onDeleteThread={handleDeleteThread}
+          showArchive={showArchive}
+          onToggleArchive={() => setShowArchive(!showArchive)}
+          hasPendingNewChat={hasPendingNewChat}
+        />
+      </div>
 
       {/* Messages */}
-      <MessageList
-        messages={localMessages}
-        streamingMessage={streamingMessage}
-        isStreaming={isStreaming}
-      />
+      <div className="flex-1 overflow-hidden">
+        <MessageList
+          messages={localMessages}
+          streamingMessage={streamingMessage}
+          isStreaming={isStreaming}
+        />
+      </div>
 
       {/* Input */}
-      <MessageInput
-        input={input}
-        onInputChange={setInput}
-        onSendMessage={handleSendMessage}
-        isStreaming={isStreaming}
-        currentPage={currentPage}
-        highlightContexts={highlightContexts}
-        onRemoveContext={handleRemoveContext}
-      />
+      <div className="flex-shrink-0">
+        <MessageInput
+          input={input}
+          onInputChange={setInput}
+          onSendMessage={handleSendMessage}
+          isStreaming={isStreaming}
+          currentPage={currentPage}
+          highlightContexts={highlightContexts}
+          onRemoveContext={handleRemoveContext}
+        />
+      </div>
     </div>
   );
 }

@@ -100,6 +100,88 @@ class IngestionService:
 
         return text
 
+    def convert_math_to_latex(self, text: str) -> str:
+        r"""
+        Convert LaTeX math delimiters to markdown-compatible format.
+
+        Converts:
+        - \(...\) to $...$ (inline math)
+        - \[...\] to $$...$$ (display math)
+        - (V(\phi)=...) to $V(\phi)=...$ (parentheses-wrapped formulas with LaTeX)
+
+        This handles formulas that contain:
+        - Backslashes (LaTeX commands like \phi, \mu, etc.)
+        - Curly braces for subscripts/superscripts {2}
+        - Mathematical operators
+        - Greek letters and special symbols
+        """
+        # First, convert standard LaTeX delimiters to markdown format
+        # Convert display math \[...\] to $$...$$
+        text = re.sub(r"\\" + r"\[(.*?)\\" + r"\]", r"$$\1$$", text, flags=re.DOTALL)
+
+        # Convert inline math \(...\) to $...$
+        text = re.sub(r"\\" + r"\((.*?)\\" + r"\)", r"$\1$", text, flags=re.DOTALL)
+
+        # Also handle parentheses-wrapped formulas (for backward compatibility)
+        # Skip this if we already have $ delimiters in the text (avoid double conversion)
+        def find_and_replace_paren_math(text: str) -> str:
+            result = []
+            i = 0
+
+            while i < len(text):
+                # Skip sections that are already in $ delimiters
+                if text[i] == "$":
+                    result.append(text[i])
+                    i += 1
+                    # Copy everything until closing $
+                    while i < len(text) and text[i] != "$":
+                        result.append(text[i])
+                        i += 1
+                    if i < len(text):
+                        result.append(text[i])  # closing $
+                        i += 1
+                    continue
+
+                # Not an opening paren - just copy and move on
+                if text[i] != "(":
+                    result.append(text[i])
+                    i += 1
+                    continue
+
+                # Try to find matching closing paren
+                depth = 1
+                j = i + 1
+                while j < len(text) and depth > 0:
+                    if text[j] == "(":
+                        depth += 1
+                    elif text[j] == ")":
+                        depth -= 1
+                    j += 1
+
+                # No matching closing paren found - just copy the opening paren
+                if depth != 0:
+                    result.append(text[i])
+                    i += 1
+                    continue
+
+                # Extract content between parens
+                content = text[i + 1 : j - 1]
+
+                # Check if it looks like math (contains LaTeX commands, super/subscripts, or braces)
+                has_math = any(char in content for char in ["\\", "^", "_", "{", "}"])
+                if not has_math:
+                    result.append(text[i])
+                    i += 1
+                    continue
+
+                # Convert to LaTeX delimiters
+                result.append(f"${content}$")
+                i = j
+
+            return "".join(result)
+
+        return find_and_replace_paren_math(text)
+
     def extract_text_from_pdf(self, pdf_bytes: bytes) -> tuple[list[str], int]:
         """
         Extract text from PDF, returning list of page texts and total pages
@@ -113,6 +195,8 @@ class IngestionService:
                 text = page.get_text()
                 # Sanitize text to remove null bytes and other invalid characters
                 text = self.sanitize_text(text)
+                # Convert math formulas from parentheses to LaTeX delimiters
+                text = self.convert_math_to_latex(text)
                 pages.append(text)
 
             total_pages = len(doc)

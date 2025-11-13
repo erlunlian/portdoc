@@ -1,5 +1,6 @@
 """RAG (Retrieval-Augmented Generation) service for chat"""
 
+import re
 import time
 from collections.abc import AsyncGenerator
 from uuid import UUID
@@ -33,6 +34,73 @@ class RAGService:
         logger.info("Using Ollama for chat", model=self.model, base_url=settings.ollama_base_url)
 
         self.embedding = EmbeddingService()
+
+    def convert_math_to_latex(self, text: str) -> str:
+        r"""
+        Convert LaTeX math delimiters to markdown-compatible format.
+
+        Converts:
+        - \(...\) to $...$ (inline math)
+        - \[...\] to $$...$$ (display math)
+        - (V(\phi)=...) to $V(\phi)=...$ (parentheses-wrapped formulas with LaTeX)
+
+        This handles formulas that contain:
+        - Backslashes (LaTeX commands like \phi, \mu, etc.)
+        - Curly braces for subscripts/superscripts {2}
+        - Mathematical operators
+        - Greek letters and special symbols
+        """
+        # First, convert standard LaTeX delimiters to markdown format
+        # Convert display math \[...\] to $$...$$
+        text = re.sub(r"\\" + r"\[(.*?)\\" + r"\]", r"$$\1$$", text, flags=re.DOTALL)
+
+        # Convert inline math \(...\) to $...$
+        text = re.sub(r"\\" + r"\((.*?)\\" + r"\)", r"$\1$", text, flags=re.DOTALL)
+
+        # Also handle parentheses-wrapped formulas (for backward compatibility)
+        # Skip this if we already have $ delimiters in the text (avoid double conversion)
+        def find_and_replace_paren_math(text: str) -> str:
+            result = []
+            i = 0
+            while i < len(text):
+                # Skip sections that are already in $ delimiters
+                if text[i] == "$":
+                    # Find matching closing $
+                    result.append(text[i])
+                    i += 1
+                    while i < len(text) and text[i] != "$":
+                        result.append(text[i])
+                        i += 1
+                    if i < len(text):
+                        result.append(text[i])  # closing $
+                        i += 1
+                    continue
+
+                if text[i] == "(":
+                    # Try to find matching closing paren
+                    depth = 1
+                    j = i + 1
+                    while j < len(text) and depth > 0:
+                        if text[j] == "(":
+                            depth += 1
+                        elif text[j] == ")":
+                            depth -= 1
+                        j += 1
+
+                    if depth == 0:
+                        # Found matching closing paren
+                        content = text[i + 1 : j - 1]
+                        # Check if it looks like math (contains LaTeX commands, super/subscripts, or braces)
+                        if any(char in content for char in ["\\", "^", "_", "{", "}"]):
+                            # Convert to LaTeX delimiters
+                            result.append(f"${content}$")
+                            i = j
+                            continue
+                result.append(text[i])
+                i += 1
+            return "".join(result)
+
+        return find_and_replace_paren_math(text)
 
     async def validate_llm_connection(self) -> None:
         """
@@ -127,7 +195,7 @@ class RAGService:
                 {
                     "chunk_id": str(row.id),
                     "page": row.page,
-                    "text": row.text,
+                    "text": self.convert_math_to_latex(row.text),  # Convert math formulas to LaTeX
                     "similarity": 1 - row.distance,
                 }
                 for row in rows
@@ -293,10 +361,13 @@ class RAGService:
             chunk_ids = [chunk["chunk_id"] for chunk in chunks]
             pages = sorted(set(chunk["page"] for chunk in chunks))
 
+            # Convert math formulas in the response before saving
+            converted_response = self.convert_math_to_latex(full_response)
+
             assistant_msg = Message(
                 thread_id=thread_id,
                 role=MessageRole.ASSISTANT,
-                content=full_response,
+                content=converted_response,
                 tokens_completion=tokens_completion,
                 message_metadata={"chunk_ids": chunk_ids, "pages": pages},
             )

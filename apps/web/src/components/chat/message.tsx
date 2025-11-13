@@ -2,8 +2,11 @@
 
 import { cn } from "@/lib/utils";
 import type { Message } from "@/types/api";
+import "katex/dist/katex.min.css";
 import ReactMarkdown from "react-markdown";
+import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
 
 interface MessageProps {
   message: Message;
@@ -25,7 +28,9 @@ export function MessageComponent({ message }: MessageProps) {
         {message.role === "assistant" ? (
           <>
             <div className="message-content">
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
+              <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
+                {message.content}
+              </ReactMarkdown>
             </div>
             {message.metadata?.pages && message.metadata.pages.length > 0 && (
               <div className="mt-2 flex flex-wrap items-center gap-1.5">

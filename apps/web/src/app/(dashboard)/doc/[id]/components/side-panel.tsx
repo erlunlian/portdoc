@@ -107,10 +107,10 @@ export function SidePanel({ documentId, currentPage, onJumpToPage }: SidePanelPr
       </div>
 
       {/* Content with transition */}
-      <div className="relative flex-1 overflow-hidden">
+      <div className="relative flex flex-1 flex-col overflow-hidden">
         <div
           className={cn(
-            "absolute inset-0 transition-opacity duration-200",
+            "absolute inset-0 flex flex-col transition-opacity duration-200",
             activeView === "chat" ? "opacity-100" : "pointer-events-none opacity-0"
           )}
         >
@@ -123,7 +123,7 @@ export function SidePanel({ documentId, currentPage, onJumpToPage }: SidePanelPr
         </div>
         <div
           className={cn(
-            "absolute inset-0 transition-opacity duration-200",
+            "absolute inset-0 flex flex-col transition-opacity duration-200",
             activeView === "highlights" ? "opacity-100" : "pointer-events-none opacity-0"
           )}
         >

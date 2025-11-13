@@ -119,6 +119,22 @@
     @apply prose-code:text-foreground prose-code:bg-muted prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:text-xs prose-code:font-mono prose-code:before:content-none prose-code:after:content-none;
     @apply prose-pre:bg-muted prose-pre:text-foreground prose-pre:p-4 prose-pre:rounded-lg prose-pre:my-3;
     @apply prose-blockquote:border-l-primary prose-blockquote:text-muted-foreground;
+    /* Prevent KaTeX from breaking layout */
+    min-height: 0;
+    overflow: visible;
+  }
+  
+  /* Fix KaTeX display equations not affecting layout */
+  .message-content .katex-display {
+    @apply my-3 overflow-x-auto overflow-y-hidden;
+    /* Ensure display equations don't break flex containers */
+    min-height: 0;
+    flex-shrink: 0;
+  }
+  
+  /* Ensure inline math doesn't affect layout */
+  .message-content .katex {
+    @apply inline-block align-middle;
   }
 }
 
