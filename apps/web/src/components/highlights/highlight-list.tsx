@@ -238,7 +238,7 @@ export function HighlightList({ documentId, currentPage, onJumpToPage }: Highlig
                 key={option.value}
                 onClick={() => handleSortToggle(option.value)}
                 className={cn(
-                  "flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors",
+                  "flex items-center gap-1.5 rounded-xl px-2.5 py-1.5 text-xs font-medium transition-colors",
                   sortBy === option.value
                     ? "bg-primary text-primary-foreground"
                     : "bg-muted/50 text-muted-foreground hover:bg-muted"
@@ -259,7 +259,7 @@ export function HighlightList({ documentId, currentPage, onJumpToPage }: Highlig
             {sortedHighlights.map((highlight: Highlight) => (
               <div
                 key={highlight.id}
-                className="group relative cursor-pointer rounded-lg bg-amber-50/50 p-3 transition-colors hover:bg-amber-50 dark:bg-amber-900/10 dark:hover:bg-amber-900/20"
+                className="group relative cursor-pointer rounded-2xl bg-amber-50/50 p-3 transition-colors hover:bg-amber-50 dark:bg-amber-900/10 dark:hover:bg-amber-900/20"
                 onClick={() => handleJumpToHighlight(highlight)}
               >
                 {/* Page indicator */}
@@ -278,7 +278,7 @@ export function HighlightList({ documentId, currentPage, onJumpToPage }: Highlig
 
                 {/* Note */}
                 {highlight.note && (
-                  <div className="mt-2 rounded-md bg-blue-50/50 p-2 text-sm italic text-blue-900 dark:bg-blue-900/10 dark:text-blue-100">
+                  <div className="mt-2 rounded-xl bg-blue-50/50 p-2 text-sm italic text-blue-900 dark:bg-blue-900/10 dark:text-blue-100">
                     {highlight.note}
                   </div>
                 )}
