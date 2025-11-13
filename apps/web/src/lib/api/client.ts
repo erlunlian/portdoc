@@ -51,6 +51,13 @@ export class APIClient {
     return this.uploadFile<UploadURLResponse>("/documents/upload", formData);
   }
 
+  async uploadArxivDocument(arxivUrl: string) {
+    return this.request<UploadURLResponse>("/documents/upload-arxiv", {
+      method: "POST",
+      body: JSON.stringify({ arxiv_url: arxivUrl }),
+    });
+  }
+
   async getDocuments(statusFilter?: string) {
     const params = statusFilter ? `?status_filter=${statusFilter}` : "";
     return this.request(`/documents${params}`);

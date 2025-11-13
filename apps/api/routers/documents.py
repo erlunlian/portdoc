@@ -2,6 +2,7 @@
 
 from uuid import UUID, uuid4
 
+import httpx
 import structlog
 from fastapi import (
     APIRouter,
@@ -21,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from db.base import get_db
 from db.models import Document, DocumentReadState, DocumentStatus
 from schemas.documents import (
+    ArxivUploadRequest,
     DocumentListResponse,
     DocumentReadStateResponse,
     DocumentReadStateUpdate,
@@ -123,6 +125,96 @@ async def upload_document(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to upload document: {str(e)}",
+        )
+
+
+@router.post("/documents/upload-arxiv", response_model=UploadURLResponse)
+async def upload_arxiv_document(
+    background_tasks: BackgroundTasks,
+    request: ArxivUploadRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Upload a document from an arxiv URL"""
+    try:
+        # Download PDF from arxiv
+        try:
+            pdf_content, title = await ingestion_service.download_arxiv_pdf(request.arxiv_url)
+        except ValueError as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=str(e),
+            )
+        except httpx.HTTPError as e:
+            logger.error("Failed to download arxiv PDF", error=str(e), url=request.arxiv_url)
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=f"Failed to download PDF from arxiv: {str(e)}",
+            )
+
+        # Generate document ID
+        document_id = uuid4()
+
+        # Generate storage path
+        storage_path = f"{document_id}.pdf"
+
+        # Upload to local storage
+        await storage_service.upload_file(storage_path, pdf_content, "application/pdf")
+
+        # Create document record
+        document = Document(
+            id=document_id,
+            title=title,
+            original_filename=f"{title}.pdf",
+            storage_path=storage_path,
+            status=DocumentStatus.UPLOADED,
+        )
+        db.add(document)
+        await db.commit()
+
+        logger.info(
+            "Arxiv document uploaded successfully",
+            document_id=str(document_id),
+            arxiv_url=request.arxiv_url,
+            title=title,
+        )
+
+        # Automatically trigger ingestion in the background
+        async def ingest_uploaded_document(doc_id: UUID):
+            """Background task to automatically ingest the uploaded document"""
+            try:
+                logger.info(
+                    "Starting automatic ingestion for arxiv document", document_id=str(doc_id)
+                )
+                result = await ingestion_service.ingest_document(doc_id, None)
+                if result:
+                    logger.info(
+                        "Automatic ingestion completed successfully", document_id=str(doc_id)
+                    )
+                else:
+                    logger.error("Automatic ingestion failed", document_id=str(doc_id))
+            except Exception as e:
+                logger.error(
+                    "Error during automatic ingestion",
+                    document_id=str(doc_id),
+                    error=str(e),
+                    exc_info=e,
+                )
+
+        background_tasks.add_task(ingest_uploaded_document, document_id)
+        logger.info("Queued arxiv document for automatic ingestion", document_id=str(document_id))
+
+        return UploadURLResponse(
+            document_id=document_id,
+            storage_path=storage_path,
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Failed to upload arxiv document", error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to upload arxiv document: {str(e)}",
         )
 
 

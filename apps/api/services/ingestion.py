@@ -1,8 +1,10 @@
 """PDF ingestion service for text extraction and chunking"""
 
+import re
 from uuid import UUID
 
 import fitz  # PyMuPDF
+import httpx
 import structlog
 import tiktoken
 from sqlalchemy import select, update
@@ -26,6 +28,78 @@ class IngestionService:
         self.chunk_size = 1000  # tokens
         self.chunk_overlap = 200  # tokens
 
+    def parse_arxiv_id(self, arxiv_url: str) -> str | None:
+        """
+        Extract arxiv paper ID from URL
+        Supports formats like:
+        - https://arxiv.org/abs/2301.07041
+        - https://arxiv.org/pdf/2301.07041.pdf
+        - arxiv.org/abs/2301.07041
+        - 2301.07041
+        """
+        # Remove whitespace
+        arxiv_url = arxiv_url.strip()
+
+        # Pattern to match arxiv ID (YYMM.NNNNN or YYMM.NNNNNV)
+        arxiv_id_pattern = r"(\d{4}\.\d{4,5}(?:v\d+)?)"
+
+        match = re.search(arxiv_id_pattern, arxiv_url)
+        if match:
+            return match.group(1)
+
+        return None
+
+    async def download_arxiv_pdf(self, arxiv_url: str) -> tuple[bytes, str]:
+        """
+        Download PDF from arxiv URL
+        Returns (pdf_bytes, title)
+        """
+        arxiv_id = self.parse_arxiv_id(arxiv_url)
+        if not arxiv_id:
+            raise ValueError(f"Invalid arxiv URL: {arxiv_url}")
+
+        # Remove version suffix if present for the download URL
+        arxiv_id_no_version = re.sub(r"v\d+$", "", arxiv_id)
+
+        # Construct PDF download URL
+        pdf_url = f"https://arxiv.org/pdf/{arxiv_id_no_version}.pdf"
+
+        logger.info("Downloading arxiv PDF", arxiv_id=arxiv_id, url=pdf_url)
+
+        async with httpx.AsyncClient(timeout=60.0, follow_redirects=True) as client:
+            response = await client.get(pdf_url)
+            response.raise_for_status()
+
+            if response.headers.get("content-type") != "application/pdf":
+                raise ValueError(f"URL did not return a PDF: {pdf_url}")
+
+            # Use arxiv ID as title
+            title = f"arxiv:{arxiv_id}"
+
+            logger.info(
+                "Successfully downloaded arxiv PDF",
+                arxiv_id=arxiv_id,
+                size_bytes=len(response.content),
+            )
+
+            return response.content, title
+
+    def sanitize_text(self, text: str) -> str:
+        """
+        Sanitize text to remove characters that PostgreSQL UTF-8 doesn't support
+        - Removes null bytes (0x00)
+        - Removes other problematic control characters
+        """
+        # Remove null bytes
+        text = text.replace("\x00", "")
+
+        # Remove other control characters except common whitespace (tab, newline, carriage return)
+        # Keep: \t (tab), \n (newline), \r (carriage return)
+        # Remove: other control characters in range 0x00-0x1F and 0x7F-0x9F
+        text = "".join(char for char in text if char >= " " or char in "\t\n\r")
+
+        return text
+
     def extract_text_from_pdf(self, pdf_bytes: bytes) -> tuple[list[str], int]:
         """
         Extract text from PDF, returning list of page texts and total pages
@@ -37,6 +111,8 @@ class IngestionService:
             for page_num in range(len(doc)):
                 page = doc[page_num]
                 text = page.get_text()
+                # Sanitize text to remove null bytes and other invalid characters
+                text = self.sanitize_text(text)
                 pages.append(text)
 
             total_pages = len(doc)

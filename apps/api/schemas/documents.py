@@ -65,3 +65,9 @@ class DocumentReadStateResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class ArxivUploadRequest(BaseModel):
+    """Schema for arxiv URL upload"""
+
+    arxiv_url: str = Field(..., min_length=1, max_length=500)
