@@ -84,6 +84,22 @@ class IngestionService:
 
             return response.content, title
 
+    def sanitize_text(self, text: str) -> str:
+        """
+        Sanitize text to remove characters that PostgreSQL UTF-8 doesn't support
+        - Removes null bytes (0x00)
+        - Removes other problematic control characters
+        """
+        # Remove null bytes
+        text = text.replace("\x00", "")
+
+        # Remove other control characters except common whitespace (tab, newline, carriage return)
+        # Keep: \t (tab), \n (newline), \r (carriage return)
+        # Remove: other control characters in range 0x00-0x1F and 0x7F-0x9F
+        text = "".join(char for char in text if char >= " " or char in "\t\n\r")
+
+        return text
+
     def extract_text_from_pdf(self, pdf_bytes: bytes) -> tuple[list[str], int]:
         """
         Extract text from PDF, returning list of page texts and total pages
@@ -95,6 +111,8 @@ class IngestionService:
             for page_num in range(len(doc)):
                 page = doc[page_num]
                 text = page.get_text()
+                # Sanitize text to remove null bytes and other invalid characters
+                text = self.sanitize_text(text)
                 pages.append(text)
 
             total_pages = len(doc)
