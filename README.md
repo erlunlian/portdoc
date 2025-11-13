@@ -39,7 +39,7 @@ A PDF reading and study application with AI-powered chat, highlights, and docume
 
    Pull the required models:
    ```bash
-   ollama pull gemma3:12b
+   ollama pull gpt-oss:20b
    ollama pull mxbai-embed-large
    ```
 
@@ -64,14 +64,6 @@ A PDF reading and study application with AI-powered chat, highlights, and docume
    alembic upgrade head
    ```
 
-6. **Setup database policies and storage**
-   ```bash
-   psql postgresql://postgres:postgres@localhost:54322/postgres < ../../infra/supabase/setup_rls.sql
-   psql postgresql://postgres:postgres@localhost:54322/postgres < ../../infra/supabase/setup_storage.sql
-   ```
-
-   If you don't have `psql`, you can run these SQL files through Supabase Studio at http://localhost:54323
-
 ## Running the Application
 
 Start the backend and frontend in separate terminals:
@@ -93,7 +85,6 @@ pnpm dev
 
 - **Application**: http://localhost:3000
 - **API Documentation**: http://localhost:8000/docs
-- **Supabase Studio**: http://localhost:54323
 
 ## Troubleshooting
 
