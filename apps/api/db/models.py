@@ -102,6 +102,7 @@ class Highlight(Base):
     page: Mapped[int] = mapped_column(Integer, nullable=False)
     rects: Mapped[dict] = mapped_column(JSON, nullable=False)  # Array of {x, y, width, height}
     text: Mapped[str] = mapped_column(Text, nullable=False)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
     # Relationships

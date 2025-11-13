@@ -113,15 +113,15 @@ export default function DocumentPage() {
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
-      {/* Floating Header Row */}
+      {/* Header */}
       <div className="flex-shrink-0 px-6 pb-3 pt-6">
         <DocumentHeader title={document.title} documentId={documentId} />
       </div>
 
-      {/* Main Content - Floating Panels */}
-      <div className="relative flex-1 overflow-hidden px-6 pb-6">
-        {/* Floating PDF Viewer */}
-        <div className="bg-background/95 absolute bottom-6 left-6 right-[448px] top-0 flex justify-center overflow-hidden rounded-3xl shadow-2xl backdrop-blur-xl">
+      {/* Main Content */}
+      <div className="flex flex-1 gap-6 overflow-hidden px-6 pb-6">
+        {/* PDF Viewer - 65% width */}
+        <div className="w-[65%]">
           {pdfUrl ? (
             <PdfViewer
               url={pdfUrl}
@@ -133,22 +133,24 @@ export default function DocumentPage() {
               onScaleChange={handleScaleChange}
             />
           ) : (
-            <div className="flex h-full items-center justify-center">
+            <div className="bg-background flex h-full items-center justify-center overflow-hidden rounded-3xl shadow-2xl">
               <div className="text-muted-foreground">Loading PDF...</div>
             </div>
           )}
         </div>
 
-        {/* Floating Side Panel */}
-        <SidePanel
-          documentId={documentId}
-          currentPage={currentPage}
-          onJumpToPage={(page) => {
-            // Trigger programmatic scroll via custom event
-            window.dispatchEvent(new CustomEvent("jumpToPageProgrammatic", { detail: { page } }));
-            handlePageChange(page);
-          }}
-        />
+        {/* Side Panel - 35% width */}
+        <div className="w-[35%]">
+          <SidePanel
+            documentId={documentId}
+            currentPage={currentPage}
+            onJumpToPage={(page) => {
+              // Trigger programmatic scroll via custom event
+              window.dispatchEvent(new CustomEvent("jumpToPageProgrammatic", { detail: { page } }));
+              handlePageChange(page);
+            }}
+          />
+        </div>
       </div>
     </div>
   );

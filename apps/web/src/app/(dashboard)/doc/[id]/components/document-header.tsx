@@ -64,7 +64,7 @@ export function DocumentHeader({ title, documentId }: DocumentHeaderProps) {
 
   return (
     <div className="w-full">
-      <div className="bg-background/95 w-full rounded-full px-6 py-3 shadow-2xl backdrop-blur-xl">
+      <div className="bg-background/95 w-full rounded-full border border-gray-300 px-6 py-3 shadow-2xl backdrop-blur-xl">
         {isEditing ? (
           <input
             ref={inputRef}

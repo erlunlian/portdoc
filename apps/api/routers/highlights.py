@@ -7,7 +7,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.base import get_db
 from db.models import Document, Highlight
-from schemas.highlights import HighlightCreate, HighlightListResponse, HighlightResponse
+from schemas.highlights import (
+    HighlightCreate,
+    HighlightListResponse,
+    HighlightResponse,
+    HighlightUpdate,
+)
 
 logger = structlog.get_logger()
 router = APIRouter()
@@ -70,6 +75,7 @@ async def create_highlight(
         page=highlight_create.page,
         rects=[rect.model_dump() for rect in highlight_create.rects],
         text=highlight_create.text,
+        note=highlight_create.note,
     )
     db.add(highlight)
     await db.commit()
@@ -81,6 +87,31 @@ async def create_highlight(
         document_id=str(document_id),
         page=highlight_create.page,
     )
+
+    return HighlightResponse.model_validate(highlight)
+
+
+@router.patch("/highlights/{highlight_id}", response_model=HighlightResponse)
+async def update_highlight(
+    highlight_id: str,
+    highlight_update: HighlightUpdate,
+    db: AsyncSession = Depends(get_db),
+):
+    """Update a highlight"""
+    result = await db.execute(select(Highlight).where(Highlight.id == highlight_id))
+    highlight = result.scalar_one_or_none()
+
+    if not highlight:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Highlight not found")
+
+    # Update only provided fields
+    if highlight_update.note is not None:
+        highlight.note = highlight_update.note
+
+    await db.commit()
+    await db.refresh(highlight)
+
+    logger.info("Updated highlight", highlight_id=str(highlight_id))
 
     return HighlightResponse.model_validate(highlight)
 

@@ -8,9 +8,8 @@ interface HighlightOverlayProps {
   documentId: string;
   page: number;
   pageRef: React.RefObject<HTMLDivElement>;
-  isSelecting: boolean;
-  selectionRect: { x: number; y: number; width: number; height: number } | null;
   onSelectionComplete: () => void;
+  scale: number;
 }
 
 interface Highlight {
@@ -24,12 +23,11 @@ export function HighlightOverlay({
   documentId,
   page,
   pageRef,
-  isSelecting,
-  selectionRect,
   onSelectionComplete,
+  scale,
 }: HighlightOverlayProps) {
-  const [selectedText, setSelectedText] = useState("");
   const queryClient = useQueryClient();
+  const [flashingHighlightId, setFlashingHighlightId] = useState<string | null>(null);
 
   // Fetch highlights for this page
   const { data: highlightsData } = useQuery<{
@@ -46,22 +44,6 @@ export function HighlightOverlay({
 
   const highlights = highlightsData?.highlights?.filter((h: Highlight) => h.page === page) || [];
 
-  // Create highlight mutation
-  const createHighlightMutation = useMutation({
-    mutationFn: async (data: {
-      page: number;
-      rects: Array<{ x: number; y: number; width: number; height: number }>;
-      text: string;
-    }) => {
-      return apiClient.createHighlight(documentId, data);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["highlights", documentId] });
-      onSelectionComplete();
-      setSelectedText("");
-    },
-  });
-
   // Delete highlight mutation
   const deleteHighlightMutation = useMutation({
     mutationFn: async (highlightId: string) => {
@@ -72,104 +54,99 @@ export function HighlightOverlay({
     },
   });
 
-  // Get selected text when selection completes
-  useEffect(() => {
-    if (!isSelecting && selectionRect && selectionRect.width > 10 && selectionRect.height > 10) {
-      const selection = window.getSelection();
-      if (selection && selection.toString().trim()) {
-        setSelectedText(selection.toString().trim());
-      }
-    }
-  }, [isSelecting, selectionRect]);
-
-  const handleSaveHighlight = () => {
-    if (!selectionRect || !selectedText.trim()) return;
-
-    createHighlightMutation.mutate({
-      page,
-      rects: [selectionRect],
-      text: selectedText,
-    });
-  };
-
   const handleDeleteHighlight = (highlightId: string) => {
     if (confirm("Delete this highlight?")) {
       deleteHighlightMutation.mutate(highlightId);
     }
   };
 
+  // Listen for scroll to highlight events
+  useEffect(() => {
+    const handleScrollToHighlight = (event: CustomEvent<{ highlightId: string; page: number }>) => {
+      const { highlightId, page: targetPage } = event.detail;
+
+      // Only handle if this is the correct page
+      if (targetPage !== page) return;
+
+      // Flash the highlight
+      setFlashingHighlightId(highlightId);
+
+      // Scroll to the highlight element
+      setTimeout(() => {
+        const highlightElement = document.querySelector(`[data-highlight-id="${highlightId}"]`);
+        if (highlightElement) {
+          highlightElement.scrollIntoView({
+            behavior: "smooth",
+            block: "center",
+            inline: "center",
+          });
+        }
+      }, 100);
+
+      // Remove flash after animation
+      setTimeout(() => {
+        setFlashingHighlightId(null);
+      }, 2000);
+    };
+
+    window.addEventListener("scrollToHighlight", handleScrollToHighlight as EventListener);
+    return () => {
+      window.removeEventListener("scrollToHighlight", handleScrollToHighlight as EventListener);
+    };
+  }, [page]);
+
   if (!pageRef.current) return null;
 
   return (
-    <>
-      {/* Selection rectangle */}
-      {isSelecting && selectionRect && (
-        <div
-          className="pointer-events-none absolute border-2 border-blue-500 bg-blue-200 bg-opacity-30"
-          style={{
-            left: `${selectionRect.x}px`,
-            top: `${selectionRect.y}px`,
-            width: `${selectionRect.width}px`,
-            height: `${selectionRect.height}px`,
-          }}
-        />
-      )}
-
-      {/* Save highlight popup */}
-      {!isSelecting && selectionRect && selectedText && (
-        <div
-          className="absolute z-10 rounded-md border bg-white p-2 shadow-lg"
-          style={{
-            left: `${selectionRect.x + selectionRect.width / 2}px`,
-            top: `${selectionRect.y - 40}px`,
-            transform: "translateX(-50%)",
-          }}
-        >
-          <div className="mb-2 text-sm">{selectedText.substring(0, 50)}...</div>
-          <div className="flex gap-2">
-            <button
-              onClick={handleSaveHighlight}
-              className="rounded bg-blue-500 px-3 py-1 text-xs text-white hover:bg-blue-600"
-            >
-              Save
-            </button>
-            <button
-              onClick={() => {
-                setSelectedText("");
-                onSelectionComplete();
-              }}
-              className="rounded bg-gray-200 px-3 py-1 text-xs hover:bg-gray-300"
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
-
+    <div className="pointer-events-none absolute inset-0">
       {/* Existing highlights */}
-      {highlights.map((highlight: Highlight) => (
-        <div
-          key={highlight.id}
-          className="group absolute cursor-pointer"
-          style={{
-            left: `${highlight.rects[0]?.x || 0}px`,
-            top: `${highlight.rects[0]?.y || 0}px`,
-            width: `${highlight.rects[0]?.width || 0}px`,
-            height: `${highlight.rects[0]?.height || 0}px`,
-          }}
-        >
-          <div className="h-full w-full bg-yellow-300 bg-opacity-30 hover:bg-opacity-50" />
-          <div className="invisible absolute -top-8 left-0 rounded bg-gray-800 px-2 py-1 text-xs text-white group-hover:visible">
-            {highlight.text.substring(0, 30)}...
-            <button
-              onClick={() => handleDeleteHighlight(highlight.id)}
-              className="ml-2 text-red-300 hover:text-red-100"
-            >
-              Delete
-            </button>
+      {highlights.map((highlight: Highlight) => {
+        const rect = highlight.rects[0];
+        if (!rect) return null;
+
+        // Apply scale to page-relative coordinates
+        const scaledRect = {
+          x: rect.x * scale,
+          y: rect.y * scale,
+          width: rect.width * scale,
+          height: rect.height * scale,
+        };
+
+        const isFlashing = flashingHighlightId === highlight.id;
+
+        return (
+          <div
+            key={highlight.id}
+            data-highlight-id={highlight.id}
+            className={`group pointer-events-auto absolute cursor-pointer transition-all ${
+              isFlashing ? "animate-pulse" : ""
+            }`}
+            style={{
+              left: `${scaledRect.x}px`,
+              top: `${scaledRect.y}px`,
+              width: `${scaledRect.width}px`,
+              height: `${scaledRect.height}px`,
+            }}
+          >
+            <div
+              className={`h-full w-full ${
+                isFlashing
+                  ? "bg-yellow-400 bg-opacity-60 ring-2 ring-yellow-500 ring-offset-1"
+                  : "bg-yellow-300 bg-opacity-30 hover:bg-opacity-50"
+              }`}
+            />
+            <div className="invisible absolute -top-8 left-0 z-10 whitespace-nowrap rounded bg-gray-800 px-2 py-1 text-xs text-white group-hover:visible">
+              {highlight.text.substring(0, 30)}...
+              <button
+                onClick={() => handleDeleteHighlight(highlight.id)}
+                className="ml-2 text-red-300 hover:text-red-100"
+              >
+                Delete
+              </button>
+            </div>
           </div>
-        </div>
-      ))}
-    </>
+        );
+      })}
+    </div>
   );
 }

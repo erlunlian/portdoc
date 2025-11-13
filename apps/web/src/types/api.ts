@@ -35,6 +35,7 @@ export interface Highlight {
   page: number;
   rects: Array<{ x: number; y: number; width: number; height: number }>;
   text: string;
+  note?: string | null;
   created_at: string;
 }
 
@@ -57,6 +58,7 @@ export interface Message {
   metadata: {
     pages?: number[];
     chunk_ids?: string[];
+    highlight_contexts?: Array<{ text: string; page: number }>;
   } | null;
   created_at: string;
 }
