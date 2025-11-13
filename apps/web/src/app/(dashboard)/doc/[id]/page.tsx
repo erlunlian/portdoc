@@ -1,6 +1,7 @@
 "use client";
 
 import { PdfViewer } from "@/components/pdf/pdf-viewer";
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { apiClient } from "@/lib/api/client";
 import { debounce } from "@/lib/utils";
 import type { Document, DocumentReadState } from "@/types/api";
@@ -119,38 +120,45 @@ export default function DocumentPage() {
       </div>
 
       {/* Main Content */}
-      <div className="flex flex-1 gap-6 overflow-hidden px-6 pb-6">
-        {/* PDF Viewer - 65% width */}
-        <div className="w-[65%]">
-          {pdfUrl ? (
-            <PdfViewer
-              url={pdfUrl}
-              currentPage={currentPage}
-              onPageChange={handlePageChange}
-              totalPages={document.pages || 1}
-              documentId={documentId}
-              initialScale={readState?.scale || undefined}
-              onScaleChange={handleScaleChange}
-            />
-          ) : (
-            <div className="bg-background flex h-full items-center justify-center overflow-hidden rounded-3xl shadow-2xl">
-              <div className="text-muted-foreground">Loading PDF...</div>
-            </div>
-          )}
-        </div>
+      <div className="flex flex-1 overflow-hidden px-6 pb-6">
+        <ResizablePanelGroup direction="horizontal">
+          {/* PDF Viewer Panel - Default 65% */}
+          <ResizablePanel defaultSize={65} minSize={30} className="rounded-3xl">
+            {pdfUrl ? (
+              <PdfViewer
+                url={pdfUrl}
+                currentPage={currentPage}
+                onPageChange={handlePageChange}
+                totalPages={document.pages || 1}
+                documentId={documentId}
+                initialScale={readState?.scale || undefined}
+                onScaleChange={handleScaleChange}
+              />
+            ) : (
+              <div className="bg-background flex h-full items-center justify-center overflow-hidden rounded-3xl shadow-2xl">
+                <div className="text-muted-foreground">Loading PDF...</div>
+              </div>
+            )}
+          </ResizablePanel>
 
-        {/* Side Panel - 35% width */}
-        <div className="w-[35%]">
-          <SidePanel
-            documentId={documentId}
-            currentPage={currentPage}
-            onJumpToPage={(page) => {
-              // Trigger programmatic scroll via custom event
-              window.dispatchEvent(new CustomEvent("jumpToPageProgrammatic", { detail: { page } }));
-              handlePageChange(page);
-            }}
-          />
-        </div>
+          {/* Resize Handle */}
+          <ResizableHandle className="w-2 cursor-col-resize bg-transparent transition-colors hover:bg-blue-400/50 active:bg-blue-500/50" />
+
+          {/* Side Panel - Default 35% */}
+          <ResizablePanel defaultSize={35} minSize={25} className="rounded-3xl">
+            <SidePanel
+              documentId={documentId}
+              currentPage={currentPage}
+              onJumpToPage={(page) => {
+                // Trigger programmatic scroll via custom event
+                window.dispatchEvent(
+                  new CustomEvent("jumpToPageProgrammatic", { detail: { page } })
+                );
+                handlePageChange(page);
+              }}
+            />
+          </ResizablePanel>
+        </ResizablePanelGroup>
       </div>
     </div>
   );
