@@ -17,7 +17,7 @@ export function SidePanel({ documentId, currentPage, onJumpToPage }: SidePanelPr
   const [activeView, setActiveView] = useState<"chat" | "highlights">("chat");
 
   return (
-    <div className="bg-background/95 absolute bottom-6 right-6 top-0 flex w-[400px] flex-col overflow-hidden rounded-3xl shadow-2xl backdrop-blur-xl">
+    <div className="bg-background flex h-full w-full flex-col overflow-hidden rounded-3xl border border-gray-300 shadow-2xl">
       {/* Icon Toggle Header */}
       <div className="flex items-center justify-between px-6 pb-3 pt-4">
         <h3 className="text-foreground text-base font-semibold">

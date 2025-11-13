@@ -107,6 +107,13 @@ export class APIClient {
     });
   }
 
+  async updateHighlight(highlightId: string, data: { note?: string | null }) {
+    return this.request(`/highlights/${highlightId}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
+  }
+
   async deleteHighlight(highlightId: string) {
     return this.request(`/highlights/${highlightId}`, { method: "DELETE" });
   }

@@ -1,7 +1,6 @@
 """Pydantic schemas for highlights"""
 
 from datetime import datetime
-from typing import List
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -20,8 +19,15 @@ class HighlightCreate(BaseModel):
     """Schema for creating a highlight"""
 
     page: int = Field(..., ge=1)
-    rects: List[HighlightRect] = Field(..., min_length=1)
+    rects: list[HighlightRect] = Field(..., min_length=1)
     text: str = Field(..., min_length=1)
+    note: str | None = None
+
+
+class HighlightUpdate(BaseModel):
+    """Schema for updating a highlight"""
+
+    note: str | None = None
 
 
 class HighlightResponse(BaseModel):
@@ -30,8 +36,9 @@ class HighlightResponse(BaseModel):
     id: UUID
     document_id: UUID
     page: int
-    rects: List[dict]
+    rects: list[dict]
     text: str
+    note: str | None = None
     created_at: datetime
 
     class Config:

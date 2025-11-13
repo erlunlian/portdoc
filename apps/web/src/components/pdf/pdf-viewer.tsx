@@ -25,6 +25,7 @@ interface PdfViewerProps {
 interface Selection {
   text: string;
   rect: { x: number; y: number; width: number; height: number };
+  pageRelativeRect: { x: number; y: number; width: number; height: number };
   pageNumber: number;
 }
 
@@ -44,21 +45,13 @@ export function PdfViewer({
   const [pageNumber, setPageNumber] = useState<number>(currentPage);
   // Initialize scale from props or default
   const [scale, setScale] = useState<number>(initialScale || DEFAULT_ZOOM);
-  const [isSelecting, setIsSelecting] = useState(false);
   const [selection, setSelection] = useState<Selection | null>(null);
-  const [selectionRect, setSelectionRect] = useState<{
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-  } | null>(null);
   const [renderError, setRenderError] = useState<Error | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const documentRef = useRef<HTMLDivElement>(null);
   const pageRefs = useRef<Map<number, HTMLDivElement>>(new Map());
-  const selectionStartRef = useRef<{ x: number; y: number } | null>(null);
   const isProgrammaticScroll = useRef(false);
   const fullscreenContainerRef = useRef<HTMLDivElement>(null);
 
@@ -214,69 +207,55 @@ export function PdfViewer({
   }, [scale, onScaleChange]);
 
   // Handle text selection
-  const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    if (e.button !== 0) return; // Only handle left click
-
-    const rect = e.currentTarget.getBoundingClientRect();
-    selectionStartRef.current = {
-      x: e.clientX - rect.left,
-      y: e.clientY - rect.top,
-    };
-    setIsSelecting(true);
-    setSelection(null);
-    setSelectionRect(null);
-  }, []);
-
-  const handleMouseMove = useCallback(
-    (e: React.MouseEvent) => {
-      if (!isSelecting || !selectionStartRef.current) return;
-
-      const rect = e.currentTarget.getBoundingClientRect();
-      const currentX = e.clientX - rect.left;
-      const currentY = e.clientY - rect.top;
-
-      const x = Math.min(selectionStartRef.current.x, currentX);
-      const y = Math.min(selectionStartRef.current.y, currentY);
-      const width = Math.abs(currentX - selectionStartRef.current.x);
-      const height = Math.abs(currentY - selectionStartRef.current.y);
-
-      setSelectionRect({ x, y, width, height });
-    },
-    [isSelecting]
-  );
-
   const handleMouseUp = useCallback(
     (e: React.MouseEvent) => {
-      if (!isSelecting || !selectionRect) {
-        setIsSelecting(false);
-        return;
-      }
+      // Small delay to ensure selection is complete
+      setTimeout(() => {
+        const windowSelection = window.getSelection();
+        if (windowSelection && windowSelection.toString().trim()) {
+          // Find which page the selection is on
+          const target = e.target as HTMLElement;
+          const pageElement = target.closest("[data-page-number]");
+          const pageNum = pageElement
+            ? parseInt(pageElement.getAttribute("data-page-number") || "1")
+            : pageNumber;
 
-      // Get selected text
-      const selection = window.getSelection();
-      if (selection && selection.toString().trim()) {
-        // Find which page the selection is on
-        const target = e.target as HTMLElement;
-        const pageElement = target.closest("[data-page-number]");
-        const pageNum = pageElement
-          ? parseInt(pageElement.getAttribute("data-page-number") || "1")
-          : pageNumber;
+          // Get the bounding rect of the selection for positioning the context menu
+          const range = windowSelection.getRangeAt(0);
+          const rect = range.getBoundingClientRect();
 
-        setSelection({
-          text: selection.toString().trim(),
-          rect: selectionRect,
-          pageNumber: pageNum,
-        });
-      }
+          // Convert viewport coordinates to page-relative coordinates
+          let pageRelativeRect = { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
 
-      setIsSelecting(false);
+          if (pageElement) {
+            const pageRect = pageElement.getBoundingClientRect();
+            pageRelativeRect = {
+              x: (rect.x - pageRect.x) / scale,
+              y: (rect.y - pageRect.y) / scale,
+              width: rect.width / scale,
+              height: rect.height / scale,
+            };
+          }
+
+          setSelection({
+            text: windowSelection.toString().trim(),
+            rect: {
+              x: rect.x,
+              y: rect.y,
+              width: rect.width,
+              height: rect.height,
+            },
+            pageRelativeRect,
+            pageNumber: pageNum,
+          });
+        }
+      }, 10);
     },
-    [isSelecting, selectionRect, pageNumber]
+    [pageNumber, scale]
   );
 
   const handleSelectionClear = () => {
     setSelection(null);
-    setSelectionRect(null);
     window.getSelection()?.removeAllRanges();
   };
 
@@ -346,21 +325,22 @@ export function PdfViewer({
   }
 
   return (
-    <div ref={fullscreenContainerRef} className="flex h-full w-full flex-col bg-transparent">
+    <div
+      ref={fullscreenContainerRef}
+      className="bg-background flex h-full w-full flex-col overflow-hidden rounded-3xl border border-gray-300 shadow-2xl"
+    >
       {/* Toolbar */}
-      <div className="w-full flex-shrink-0">
-        <PdfToolbar
-          currentPage={pageNumber}
-          totalPages={numPages}
-          scale={scale}
-          onPageChange={handlePageChange}
-          onZoomIn={zoomIn}
-          onZoomOut={zoomOut}
-          onZoomChange={handleZoom}
-          isFullscreen={isFullscreen}
-          onToggleFullscreen={toggleFullscreen}
-        />
-      </div>
+      <PdfToolbar
+        currentPage={pageNumber}
+        totalPages={numPages}
+        scale={scale}
+        onPageChange={handlePageChange}
+        onZoomIn={zoomIn}
+        onZoomOut={zoomOut}
+        onZoomChange={handleZoom}
+        isFullscreen={isFullscreen}
+        onToggleFullscreen={toggleFullscreen}
+      />
 
       {/* PDF Document Container */}
       <div
@@ -383,8 +363,6 @@ export function PdfViewer({
                 }}
                 data-page-number={index + 1}
                 className="relative shadow-lg"
-                onMouseDown={handleMouseDown}
-                onMouseMove={handleMouseMove}
                 onMouseUp={handleMouseUp}
               >
                 <Page
@@ -399,20 +377,17 @@ export function PdfViewer({
                 />
 
                 {/* Highlight Overlay for this page */}
-                {index + 1 === pageNumber && (
-                  <HighlightOverlay
-                    documentId={documentId}
-                    page={index + 1}
-                    pageRef={
-                      pageRefs.current.get(index + 1)
-                        ? { current: pageRefs.current.get(index + 1) || null }
-                        : { current: null }
-                    }
-                    isSelecting={isSelecting}
-                    selectionRect={selectionRect}
-                    onSelectionComplete={handleSelectionClear}
-                  />
-                )}
+                <HighlightOverlay
+                  documentId={documentId}
+                  page={index + 1}
+                  pageRef={
+                    pageRefs.current.get(index + 1)
+                      ? { current: pageRefs.current.get(index + 1) || null }
+                      : { current: null }
+                  }
+                  onSelectionComplete={handleSelectionClear}
+                  scale={scale}
+                />
               </div>
             ))}
           </Document>

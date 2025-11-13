@@ -1,14 +1,15 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { Copy, Highlighter, MessageSquare, StickyNote, X } from "lucide-react";
 import { apiClient } from "@/lib/api/client";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { Copy, Highlighter, MessageSquare, StickyNote, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 
 interface Selection {
   text: string;
   rect: { x: number; y: number; width: number; height: number };
+  pageRelativeRect: { x: number; y: number; width: number; height: number };
   pageNumber: number;
 }
 
@@ -24,12 +25,7 @@ interface MenuPosition {
   y: number;
 }
 
-export function PdfContextMenu({
-  selection,
-  documentId,
-  onClose,
-  scale,
-}: PdfContextMenuProps) {
+export function PdfContextMenu({ selection, documentId, onClose, scale }: PdfContextMenuProps) {
   const [position, setPosition] = useState<MenuPosition>({ x: 0, y: 0 });
   const [showNoteDialog, setShowNoteDialog] = useState(false);
   const [noteText, setNoteText] = useState("");
@@ -61,17 +57,20 @@ export function PdfContextMenu({
     const windowWidth = window.innerWidth;
     const windowHeight = window.innerHeight;
 
-    // Position menu above the selection by default
+    // Position menu centered above the selection
     let x = selection.rect.x + selection.rect.width / 2 - menuWidth / 2;
-    let y = selection.rect.y - menuHeight - 10;
+    let y = selection.rect.y - menuHeight - 8;
 
-    // Adjust if menu would go off-screen
+    // Adjust horizontally if menu would go off-screen
     if (x < 10) x = 10;
     if (x + menuWidth > windowWidth - 10) x = windowWidth - menuWidth - 10;
+
+    // If no room above, position below selection
     if (y < 10) {
-      // Position below selection if no room above
-      y = selection.rect.y + selection.rect.height + 10;
+      y = selection.rect.y + selection.rect.height + 8;
     }
+
+    // Final vertical adjustment if still off-screen
     if (y + menuHeight > windowHeight - 10) {
       y = windowHeight - menuHeight - 10;
     }
@@ -109,7 +108,7 @@ export function PdfContextMenu({
   const handleHighlight = () => {
     createHighlightMutation.mutate({
       page: selection.pageNumber,
-      rects: [selection.rect],
+      rects: [selection.pageRelativeRect],
       text: selection.text,
     });
   };
@@ -120,10 +119,10 @@ export function PdfContextMenu({
 
   const handleSaveNote = () => {
     if (!noteText.trim()) return;
-    
+
     createHighlightMutation.mutate({
       page: selection.pageNumber,
-      rects: [selection.rect],
+      rects: [selection.pageRelativeRect],
       text: selection.text,
       note: noteText,
     });
@@ -147,42 +146,40 @@ export function PdfContextMenu({
   if (showNoteDialog) {
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
-        <div className="w-96 rounded-lg bg-white p-6 shadow-xl">
-          <div className="mb-4 flex items-center justify-between">
+        <div className="w-[540px] rounded-3xl bg-white p-8 shadow-xl dark:bg-gray-800">
+          <div className="mb-5 flex items-center justify-between">
             <h3 className="text-lg font-semibold">Add Note</h3>
             <button
               onClick={() => setShowNoteDialog(false)}
-              className="text-gray-400 hover:text-gray-600"
+              className="rounded-full p-1 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 dark:text-gray-500 dark:hover:bg-gray-700 dark:hover:text-gray-300"
             >
               <X className="h-5 w-5" />
             </button>
           </div>
-          
-          <div className="mb-2 rounded bg-gray-50 p-3">
-            <p className="text-sm text-gray-600">
+
+          <div className="mb-4 rounded-2xl bg-gray-50 p-4 dark:bg-gray-700">
+            <p className="text-sm text-gray-600 dark:text-gray-300">
               {selection.text.length > 100
                 ? selection.text.substring(0, 100) + "..."
                 : selection.text}
             </p>
           </div>
-          
+
           <textarea
             value={noteText}
             onChange={(e) => setNoteText(e.target.value)}
             placeholder="Add your note here..."
-            className="mb-4 h-32 w-full rounded border p-3 text-sm focus:border-blue-500 focus:outline-none"
+            className="mb-4 h-36 w-full rounded-2xl border p-4 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
             autoFocus
           />
-          
-          <div className="flex gap-2">
+
+          <div className="flex gap-3">
             <button
               onClick={handleSaveNote}
               disabled={!noteText.trim()}
               className={cn(
-                "flex-1 rounded px-4 py-2 text-sm font-medium text-white",
-                noteText.trim()
-                  ? "bg-blue-500 hover:bg-blue-600"
-                  : "bg-gray-300 cursor-not-allowed"
+                "flex-1 rounded-2xl px-5 py-2.5 text-sm font-medium text-white transition-colors",
+                noteText.trim() ? "bg-blue-500 hover:bg-blue-600" : "cursor-not-allowed bg-gray-300"
               )}
             >
               Save Note
@@ -192,7 +189,7 @@ export function PdfContextMenu({
                 setShowNoteDialog(false);
                 setNoteText("");
               }}
-              className="flex-1 rounded border px-4 py-2 text-sm font-medium hover:bg-gray-50"
+              className="flex-1 rounded-2xl border px-5 py-2.5 text-sm font-medium transition-colors hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-700"
             >
               Cancel
             </button>
@@ -205,53 +202,47 @@ export function PdfContextMenu({
   return (
     <div
       ref={menuRef}
-      className="fixed z-40 rounded-lg border bg-white py-2 shadow-xl"
+      className="fixed z-40 rounded-lg border bg-white shadow-xl"
       style={{
         left: `${position.x}px`,
         top: `${position.y}px`,
       }}
     >
-      <div className="px-3 pb-2 pt-1">
-        <p className="text-xs text-gray-500">
-          {selection.text.length > 50
-            ? selection.text.substring(0, 50) + "..."
-            : selection.text}
-        </p>
-      </div>
-      
-      <div className="border-t pt-1">
+      <div className="flex items-center divide-x">
         <button
           onClick={handleHighlight}
-          className="flex w-full items-center gap-3 px-3 py-2 text-sm hover:bg-gray-100"
+          className="group flex items-center gap-2 px-3 py-2.5 text-sm transition-colors hover:bg-yellow-50"
+          title="Highlight"
         >
-          <Highlighter className="h-4 w-4 text-yellow-500" />
-          <span>Highlight</span>
+          <Highlighter className="h-4 w-4 text-yellow-600" />
+          <span className="text-gray-700">Highlight</span>
         </button>
-        
+
         <button
           onClick={handleAddNote}
-          className="flex w-full items-center gap-3 px-3 py-2 text-sm hover:bg-gray-100"
+          className="group flex items-center gap-2 px-3 py-2.5 text-sm transition-colors hover:bg-blue-50"
+          title="Add Note"
         >
-          <StickyNote className="h-4 w-4 text-blue-500" />
-          <span>Add Note</span>
+          <StickyNote className="h-4 w-4 text-blue-600" />
+          <span className="text-gray-700">Note</span>
         </button>
-        
+
         <button
           onClick={handleAddToChat}
-          className="flex w-full items-center gap-3 px-3 py-2 text-sm hover:bg-gray-100"
+          className="group flex items-center gap-2 px-3 py-2.5 text-sm transition-colors hover:bg-green-50"
+          title="Add to Chat"
         >
-          <MessageSquare className="h-4 w-4 text-green-500" />
-          <span>Add to Chat</span>
+          <MessageSquare className="h-4 w-4 text-green-600" />
+          <span className="text-gray-700">Chat</span>
         </button>
-        
-        <div className="my-1 border-t" />
-        
+
         <button
           onClick={handleCopy}
-          className="flex w-full items-center gap-3 px-3 py-2 text-sm hover:bg-gray-100"
+          className="group flex items-center gap-2 px-3 py-2.5 text-sm transition-colors hover:bg-gray-50"
+          title="Copy"
         >
-          <Copy className="h-4 w-4 text-gray-500" />
-          <span>Copy</span>
+          <Copy className="h-4 w-4 text-gray-600" />
+          <span className="text-gray-700">Copy</span>
         </button>
       </div>
     </div>

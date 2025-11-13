@@ -35,6 +35,7 @@ export interface Highlight {
   page: number;
   rects: Array<{ x: number; y: number; width: number; height: number }>;
   text: string;
+  note?: string | null;
   created_at: string;
 }
 

@@ -40,34 +40,6 @@ export function ThreadTabs({
             ref={tabsContainerRef}
             className="scrollbar-hide flex flex-1 gap-1 overflow-x-auto pb-1"
           >
-            {/* New Chat Tab - shows when it exists */}
-            {hasPendingNewChat && (
-              <button
-                onClick={() => onThreadSelect(NEW_CHAT_ID)}
-                className={cn(
-                  "group relative flex min-w-0 flex-shrink-0 items-center gap-2 rounded-lg px-3 py-1.5 text-xs transition-all",
-                  isNewChatActive
-                    ? "bg-muted text-foreground shadow-sm"
-                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                )}
-              >
-                <MessageSquare className="h-3 w-3" />
-                <span className="whitespace-nowrap">New Chat</span>
-                <div className="bg-muted absolute inset-y-0 right-1 flex items-center rounded-md p-0.5 opacity-0 transition-all group-hover:opacity-100">
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onDeleteThread(NEW_CHAT_ID);
-                    }}
-                    className="hover:bg-muted rounded-sm shadow-sm transition-colors"
-                    title="Close tab"
-                  >
-                    <X className="m-0.5 h-3 w-3" />
-                  </button>
-                </div>
-              </button>
-            )}
-
             {/* Existing Thread Tabs */}
             {threads.map((thread: Thread) => (
               <button
@@ -98,6 +70,34 @@ export function ThreadTabs({
                 </div>
               </button>
             ))}
+
+            {/* New Chat Tab - shows when it exists, always at the right */}
+            {hasPendingNewChat && (
+              <button
+                onClick={() => onThreadSelect(NEW_CHAT_ID)}
+                className={cn(
+                  "group relative flex min-w-0 flex-shrink-0 items-center gap-2 rounded-lg px-3 py-1.5 text-xs transition-all",
+                  isNewChatActive
+                    ? "bg-muted text-foreground shadow-sm"
+                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                )}
+              >
+                <MessageSquare className="h-3 w-3" />
+                <span className="whitespace-nowrap">New Chat</span>
+                <div className="bg-muted absolute inset-y-0 right-1 flex items-center rounded-md p-0.5 opacity-0 transition-all group-hover:opacity-100">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onDeleteThread(NEW_CHAT_ID);
+                    }}
+                    className="hover:bg-muted rounded-sm shadow-sm transition-colors"
+                    title="Close tab"
+                  >
+                    <X className="m-0.5 h-3 w-3" />
+                  </button>
+                </div>
+              </button>
+            )}
           </div>
         </div>
 

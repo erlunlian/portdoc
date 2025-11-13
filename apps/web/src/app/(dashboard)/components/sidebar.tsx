@@ -44,7 +44,7 @@ export function Sidebar({ documents, isLoading, onSearchClick }: SidebarProps) {
       <aside
         className={`${isCollapsed ? "w-12" : "w-60"} relative flex flex-col transition-all duration-300`}
       >
-        <div className="bg-background/95 my-6 flex flex-1 flex-col overflow-hidden rounded-r-3xl shadow-2xl backdrop-blur-xl">
+        <div className="bg-background/95 my-6 flex flex-1 flex-col overflow-hidden rounded-r-3xl border border-gray-300 shadow-2xl backdrop-blur-xl">
           {/* Header */}
           <div className="p-2">
             <div

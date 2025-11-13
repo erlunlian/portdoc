@@ -13,6 +13,12 @@ interface ChatPanelProps {
   currentPage?: number;
 }
 
+interface HighlightContext {
+  id: string;
+  text: string;
+  page: number;
+}
+
 const NEW_CHAT_ID = "new-chat-pending";
 
 export function ChatPanel({ documentId, currentPage }: ChatPanelProps) {
@@ -26,9 +32,11 @@ export function ChatPanel({ documentId, currentPage }: ChatPanelProps) {
   const [isNewThread, setIsNewThread] = useState(true); // Start as new thread
   const [hasPendingNewChat, setHasPendingNewChat] = useState(true); // Track if pending new chat exists
   const [messagesCache, setMessagesCache] = useState<Record<string, Message[]>>({}); // Cache messages per thread
+  const [highlightContexts, setHighlightContexts] = useState<HighlightContext[]>([]); // Highlight context pills
   const queryClient = useQueryClient();
   const prevThreadIdRef = useRef<string | null>(selectedThreadId);
   const localMessagesRef = useRef<Message[]>(localMessages);
+  const messagesCacheRef = useRef<Record<string, Message[]>>(messagesCache);
 
   // Keep ref in sync with state
   useEffect(() => {
@@ -56,49 +64,49 @@ export function ChatPanel({ documentId, currentPage }: ChatPanelProps) {
     setSelectedThreadId(threadId);
   };
 
-  // Cache messages when switching threads
+  // Cache and load messages when switching threads
   useEffect(() => {
     // Only cache when thread actually changes
     if (prevThreadIdRef.current && prevThreadIdRef.current !== selectedThreadId) {
+      // IMPORTANT: Save messages BEFORE loading new thread's messages
       const prevMessages = localMessagesRef.current;
       if (prevMessages.length > 0) {
-        setMessagesCache((prev) => ({
-          ...prev,
+        const updatedCache = {
+          ...messagesCacheRef.current,
           [prevThreadIdRef.current!]: prevMessages,
-        }));
+        };
+        messagesCacheRef.current = updatedCache;
+        setMessagesCache(updatedCache);
+      }
+
+      // Now load the new thread's messages from cache
+      if (selectedThreadId === NEW_CHAT_ID) {
+        // Load cached messages for pending new chat or start fresh
+        const cached = messagesCacheRef.current[NEW_CHAT_ID];
+        if (cached && cached.length > 0) {
+          setLocalMessages(cached);
+        } else {
+          setLocalMessages([]);
+        }
+        setStreamingMessage("");
+        setIsNewThread(true);
+      } else if (selectedThreadId) {
+        // For existing threads, check cache first
+        const cached = messagesCacheRef.current[selectedThreadId];
+        if (cached && cached.length > 0) {
+          setLocalMessages(cached);
+        } else {
+          // Clear local messages so they can be loaded from API
+          setLocalMessages([]);
+        }
+        setStreamingMessage("");
+        setIsNewThread(false);
       }
     }
 
-    // Update ref for next switch
+    // Update ref for next switch (after all operations)
     prevThreadIdRef.current = selectedThreadId;
   }, [selectedThreadId]);
-
-  // Load messages when switching to a thread
-  useEffect(() => {
-    if (selectedThreadId === NEW_CHAT_ID) {
-      // Load cached messages for pending new chat or start fresh
-      const cached = messagesCache[NEW_CHAT_ID];
-      if (!cached || cached.length === 0) {
-        setLocalMessages([]);
-      } else if (JSON.stringify(cached) !== JSON.stringify(localMessages)) {
-        setLocalMessages(cached);
-      }
-      setStreamingMessage("");
-      setIsNewThread(true);
-    } else if (!isNewThread && selectedThreadId) {
-      // Check cache first for existing threads
-      const cached = messagesCache[selectedThreadId];
-      if (cached && cached.length > 0) {
-        if (JSON.stringify(cached) !== JSON.stringify(localMessages)) {
-          setLocalMessages(cached);
-        }
-      } else if (localMessages.length > 0) {
-        // Clear local messages so they can be loaded from API
-        setLocalMessages([]);
-      }
-      setStreamingMessage("");
-    }
-  }, [selectedThreadId, isNewThread, messagesCache]);
 
   // Fetch messages for selected thread (but not for placeholder or newly created threads)
   const { data: messagesData } = useQuery<{ messages: Message[]; total: number }>({
@@ -125,17 +133,26 @@ export function ChatPanel({ documentId, currentPage }: ChatPanelProps) {
     }
   }, [messages, isStreaming, isNewThread]);
 
+  // Add highlight context
+  const handleAddHighlightContext = (text: string, page: number) => {
+    const newContext: HighlightContext = {
+      id: `context-${Date.now()}-${Math.random()}`,
+      text,
+      page,
+    };
+    setHighlightContexts((prev) => [...prev, newContext]);
+  };
+
+  // Remove highlight context
+  const handleRemoveContext = (contextId: string) => {
+    setHighlightContexts((prev) => prev.filter((c) => c.id !== contextId));
+  };
+
   // Listen for "Add to Chat" events from PDF context menu
   useEffect(() => {
     const handleAddToChat = (event: CustomEvent<{ text: string; page: number }>) => {
       const { text, page } = event.detail;
-      const quotedText = `"${text}" (Page ${page})`;
-      setInput((prev) => {
-        if (prev) {
-          return `${prev}\n\n${quotedText}`;
-        }
-        return quotedText;
-      });
+      handleAddHighlightContext(text, page);
     };
 
     window.addEventListener("addToChat", handleAddToChat as EventListener);
@@ -148,6 +165,16 @@ export function ChatPanel({ documentId, currentPage }: ChatPanelProps) {
     if (!input.trim() || isStreaming) return;
 
     const messageText = input.trim();
+
+    // Format message with highlight contexts
+    let fullMessageText = messageText;
+    if (highlightContexts.length > 0) {
+      const contextTexts = highlightContexts
+        .map((ctx) => `[Page ${ctx.page}]: "${ctx.text}"`)
+        .join("\n\n");
+      fullMessageText = `${contextTexts}\n\n${messageText}`;
+    }
+
     setInput("");
     setIsStreaming(true);
     setStreamingMessage("");
@@ -160,7 +187,7 @@ export function ChatPanel({ documentId, currentPage }: ChatPanelProps) {
       id: `temp-${Date.now()}`,
       thread_id: selectedThreadId || NEW_CHAT_ID,
       role: "user",
-      content: messageText,
+      content: fullMessageText,
       tokens_prompt: null,
       tokens_completion: null,
       metadata: null,
@@ -173,11 +200,11 @@ export function ChatPanel({ documentId, currentPage }: ChatPanelProps) {
 
       if (isNewChat || selectedThreadId === NEW_CHAT_ID) {
         // Use the new start-chat endpoint
-        response = await apiClient.startChat(documentId, messageText, currentPage);
+        response = await apiClient.startChat(documentId, fullMessageText, currentPage);
       } else {
         // Use existing thread streaming endpoint
         const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000/v1";
-        const url = `${apiBaseUrl}/threads/${selectedThreadId}/stream?query=${encodeURIComponent(messageText)}${currentPage ? `&page_context=${currentPage}` : ""}`;
+        const url = `${apiBaseUrl}/threads/${selectedThreadId}/stream?query=${encodeURIComponent(fullMessageText)}${currentPage ? `&page_context=${currentPage}` : ""}`;
 
         response = await fetch(url);
       }
@@ -226,10 +253,9 @@ export function ChatPanel({ documentId, currentPage }: ChatPanelProps) {
                   );
 
                   // Clear the pending chat from cache
-                  setMessagesCache((prev) => {
-                    const { [NEW_CHAT_ID]: removed, ...rest } = prev;
-                    return rest;
-                  });
+                  const { [NEW_CHAT_ID]: removed, ...rest } = messagesCacheRef.current;
+                  messagesCacheRef.current = rest;
+                  setMessagesCache(rest);
 
                   // Add the new thread to the cache without refetching
                   const newThread: Thread = {
@@ -293,6 +319,9 @@ export function ChatPanel({ documentId, currentPage }: ChatPanelProps) {
                 setIsStreaming(false);
                 setStreamingMessage("");
 
+                // Clear highlight contexts after successful send
+                setHighlightContexts([]);
+
                 // After streaming completes, invalidate and refetch messages to get server-side messages with real IDs
                 // But only for existing threads (not for brand new threads that were just created)
                 if (currentThreadId && currentThreadId !== NEW_CHAT_ID) {
@@ -338,10 +367,9 @@ export function ChatPanel({ documentId, currentPage }: ChatPanelProps) {
     setLocalMessages([]);
     setStreamingMessage("");
     // Clear any cached messages for the pending chat
-    setMessagesCache((prev) => {
-      const { [NEW_CHAT_ID]: removed, ...rest } = prev;
-      return rest;
-    });
+    const { [NEW_CHAT_ID]: removed, ...rest } = messagesCacheRef.current;
+    messagesCacheRef.current = rest;
+    setMessagesCache(rest);
   };
 
   const handleDeleteThread = async (threadId: string) => {
@@ -349,10 +377,9 @@ export function ChatPanel({ documentId, currentPage }: ChatPanelProps) {
     if (threadId === NEW_CHAT_ID) {
       setHasPendingNewChat(false);
       // Clear cached messages for pending chat
-      setMessagesCache((prev) => {
-        const { [NEW_CHAT_ID]: removed, ...rest } = prev;
-        return rest;
-      });
+      const { [NEW_CHAT_ID]: removed, ...rest } = messagesCacheRef.current;
+      messagesCacheRef.current = rest;
+      setMessagesCache(rest);
 
       // Switch to another thread or create a new one
       if (threads.length > 0) {
@@ -400,7 +427,7 @@ export function ChatPanel({ documentId, currentPage }: ChatPanelProps) {
   };
 
   return (
-    <div className="flex h-full w-full flex-col overflow-hidden">
+    <div className="flex h-full w-full flex-col">
       {/* Header with thread tabs and actions */}
       <ThreadTabs
         threads={threads}
@@ -427,6 +454,8 @@ export function ChatPanel({ documentId, currentPage }: ChatPanelProps) {
         onSendMessage={handleSendMessage}
         isStreaming={isStreaming}
         currentPage={currentPage}
+        highlightContexts={highlightContexts}
+        onRemoveContext={handleRemoveContext}
       />
     </div>
   );

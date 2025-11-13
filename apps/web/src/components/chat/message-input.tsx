@@ -1,8 +1,14 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import { Send } from "lucide-react";
+import { Send, X } from "lucide-react";
 import { useEffect, useRef } from "react";
+
+interface HighlightContext {
+  id: string;
+  text: string;
+  page: number;
+}
 
 interface MessageInputProps {
   input: string;
@@ -10,6 +16,8 @@ interface MessageInputProps {
   onSendMessage: () => void;
   isStreaming: boolean;
   currentPage?: number;
+  highlightContexts?: HighlightContext[];
+  onRemoveContext?: (contextId: string) => void;
 }
 
 export function MessageInput({
@@ -18,6 +26,8 @@ export function MessageInput({
   onSendMessage,
   isStreaming,
   currentPage,
+  highlightContexts = [],
+  onRemoveContext,
 }: MessageInputProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -32,6 +42,33 @@ export function MessageInput({
   return (
     <div className="bg-background flex-shrink-0 p-3 pt-2">
       <div className="bg-background rounded-xl border shadow-md">
+        {/* Highlight Context Pills */}
+        {highlightContexts.length > 0 && (
+          <div className="flex flex-wrap gap-2 border-b p-3 pb-2">
+            {highlightContexts.map((context) => (
+              <div
+                key={context.id}
+                className="group flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1.5 text-sm transition-colors hover:bg-blue-100"
+              >
+                <span className="text-blue-600">📄</span>
+                <span className="text-muted-foreground text-xs">Page {context.page}:</span>
+                <span className="max-w-[200px] truncate text-xs">
+                  "{context.text}"
+                </span>
+                {onRemoveContext && (
+                  <button
+                    onClick={() => onRemoveContext(context.id)}
+                    className="text-muted-foreground hover:text-foreground ml-1 rounded-full p-0.5 transition-colors hover:bg-blue-200"
+                    aria-label="Remove context"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+        
         <div className="flex items-end gap-2 p-3">
           <textarea
             ref={textareaRef}
