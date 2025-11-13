@@ -168,6 +168,7 @@ async def start_chat(
     document_id: str = Query(...),
     query: str = Query(..., min_length=1, max_length=5000),
     page_context: Optional[int] = Query(None, ge=1),
+    highlight_contexts: Optional[str] = Query(None),  # JSON string of highlight contexts
     db: AsyncSession = Depends(get_db),
 ):
     """Start a new chat: create thread, generate title, and stream response"""
@@ -192,12 +193,21 @@ async def start_chat(
 
     logger.info("Created thread for start-chat", thread_id=str(thread_id))
 
-    # Save user message
+    # Parse highlight contexts if provided
+    contexts_metadata = None
+    if highlight_contexts:
+        try:
+            contexts_metadata = json.loads(highlight_contexts)
+        except json.JSONDecodeError:
+            logger.warning("Invalid highlight_contexts JSON", thread_id=str(thread_id))
+
+    # Save user message with metadata
     user_msg = Message(
         thread_id=thread_id,
         role=MessageRole.USER,
         content=query,
         tokens_prompt=len(query) // 4,  # Rough estimate
+        message_metadata={"highlight_contexts": contexts_metadata} if contexts_metadata else None,
     )
     db.add(user_msg)
     await db.commit()
@@ -216,6 +226,12 @@ async def start_chat(
     # Get message history (will be just the one message we added)
     message_history = [user_msg]
 
+    # Reconstruct full message with contexts for RAG (if contexts provided)
+    full_query = query
+    if contexts_metadata:
+        context_texts = [f"[Page {ctx['page']}]: \"{ctx['text']}\"" for ctx in contexts_metadata]
+        full_query = "\n\n".join(context_texts) + "\n\n" + query
+
     # Determine page filter for retrieval
     page_filter = None
     if page_context:
@@ -225,7 +241,7 @@ async def start_chat(
     # Retrieve relevant chunks
     chunks = await rag_service.retrieve_chunks(
         document_id=document.id,
-        query=query,
+        query=full_query,  # Use full query with contexts for retrieval
         k=8,
         page_filter=page_filter,
         db=db,
@@ -259,7 +275,7 @@ async def start_chat(
             full_response = ""
             async for token in rag_service.generate_response(
                 thread_id=thread_id,
-                user_message=query,
+                user_message=full_query,  # Use full query with contexts for LLM
                 chunks=chunks,
                 message_history=message_history,
                 db=db,
@@ -292,6 +308,7 @@ async def stream_response(
     thread_id: str,
     query: str = Query(..., min_length=1, max_length=5000),
     page_context: Optional[int] = Query(None, ge=1),
+    highlight_contexts: Optional[str] = Query(None),  # JSON string of highlight contexts
     db: AsyncSession = Depends(get_db),
 ):
     """Stream LLM response using Server-Sent Events (SSE)"""
@@ -309,12 +326,21 @@ async def stream_response(
     existing_message_count = existing_messages_result.scalar() or 0
     is_first_message = existing_message_count == 0
 
-    # Save user message immediately
+    # Parse highlight contexts if provided
+    contexts_metadata = None
+    if highlight_contexts:
+        try:
+            contexts_metadata = json.loads(highlight_contexts)
+        except json.JSONDecodeError:
+            logger.warning("Invalid highlight_contexts JSON", thread_id=str(thread_id))
+
+    # Save user message immediately with metadata
     user_msg = Message(
         thread_id=thread.id,
         role=MessageRole.USER,
         content=query,
         tokens_prompt=len(query) // 4,  # Rough estimate
+        message_metadata={"highlight_contexts": contexts_metadata} if contexts_metadata else None,
     )
     db.add(user_msg)
     await db.commit()
@@ -337,6 +363,12 @@ async def stream_response(
     )
     message_history = list(history_result.scalars().all())
 
+    # Reconstruct full message with contexts for RAG (if contexts provided)
+    full_query = query
+    if contexts_metadata:
+        context_texts = [f"[Page {ctx['page']}]: \"{ctx['text']}\"" for ctx in contexts_metadata]
+        full_query = "\n\n".join(context_texts) + "\n\n" + query
+
     # Determine page filter for retrieval
     page_filter = None
     if page_context:
@@ -346,7 +378,7 @@ async def stream_response(
     # Retrieve relevant chunks
     chunks = await rag_service.retrieve_chunks(
         document_id=thread.document_id,
-        query=query,
+        query=full_query,  # Use full query with contexts for retrieval
         k=8,
         page_filter=page_filter,
         db=db,
@@ -382,7 +414,7 @@ async def stream_response(
             # Stream tokens from LLM
             async for token in rag_service.generate_response(
                 thread_id=thread.id,
-                user_message=query,
+                user_message=full_query,  # Use full query with contexts for LLM
                 chunks=chunks,
                 message_history=message_history,
                 db=db,

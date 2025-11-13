@@ -43,9 +43,28 @@ export function MessageComponent({ message }: MessageProps) {
             )}
           </>
         ) : (
-          <div className="bg-primary text-primary-foreground rounded-3xl px-4 py-2.5 shadow-sm">
-            <div className="whitespace-pre-wrap break-words text-sm leading-relaxed">
-              {message.content}
+          <div className="flex flex-col items-end gap-1.5">
+            {/* Highlight context pills */}
+            {message.metadata?.highlight_contexts &&
+              message.metadata.highlight_contexts.length > 0 && (
+                <div className="flex flex-wrap justify-end gap-1.5">
+                  {message.metadata.highlight_contexts.map((context, idx) => (
+                    <div
+                      key={idx}
+                      className="flex items-center gap-1.5 rounded-full bg-blue-50 px-2.5 py-1 text-xs"
+                    >
+                      <span className="text-blue-600">📄</span>
+                      <span className="text-muted-foreground">Page {context.page}:</span>
+                      <span className="max-w-[150px] truncate">"{context.text}"</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            {/* User message bubble */}
+            <div className="bg-primary text-primary-foreground rounded-3xl px-4 py-2.5 shadow-sm">
+              <div className="whitespace-pre-wrap break-words text-sm leading-relaxed">
+                {message.content}
+              </div>
             </div>
           </div>
         )}

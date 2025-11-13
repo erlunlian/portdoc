@@ -146,13 +146,21 @@ export class APIClient {
     return this.request(`/threads/${threadId}`, { method: "DELETE" });
   }
 
-  async startChat(documentId: string, query: string, pageContext?: number) {
+  async startChat(
+    documentId: string,
+    query: string,
+    pageContext?: number,
+    highlightContexts?: Array<{ text: string; page: number }>
+  ) {
     const params = new URLSearchParams({
       document_id: documentId,
       query: query,
     });
     if (pageContext) {
       params.append("page_context", pageContext.toString());
+    }
+    if (highlightContexts && highlightContexts.length > 0) {
+      params.append("highlight_contexts", JSON.stringify(highlightContexts));
     }
 
     const response = await fetch(`${API_BASE_URL}/threads/start-chat?${params}`, {

@@ -5,7 +5,7 @@ import { HighlightList } from "@/components/highlights/highlight-list";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { Highlighter, MessageSquare } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 interface SidePanelProps {
   documentId: string;
@@ -13,8 +13,63 @@ interface SidePanelProps {
   onJumpToPage: (page: number) => void;
 }
 
+const STORAGE_KEY_PREFIX = "sidebar-state-";
+
+interface SidebarState {
+  activeView: "chat" | "highlights";
+  selectedThreadId?: string | null;
+}
+
 export function SidePanel({ documentId, currentPage, onJumpToPage }: SidePanelProps) {
-  const [activeView, setActiveView] = useState<"chat" | "highlights">("chat");
+  // Load initial state from localStorage
+  const [activeView, setActiveView] = useState<"chat" | "highlights">(() => {
+    if (typeof window === "undefined") return "chat";
+    try {
+      const stored = localStorage.getItem(`${STORAGE_KEY_PREFIX}${documentId}`);
+      if (stored) {
+        const state: SidebarState = JSON.parse(stored);
+        return state.activeView || "chat";
+      }
+    } catch (error) {
+      console.error("Failed to load sidebar state:", error);
+    }
+    return "chat";
+  });
+
+  const [selectedThreadId, setSelectedThreadId] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    try {
+      const stored = localStorage.getItem(`${STORAGE_KEY_PREFIX}${documentId}`);
+      if (stored) {
+        const state: SidebarState = JSON.parse(stored);
+        return state.selectedThreadId || null;
+      }
+    } catch (error) {
+      console.error("Failed to load sidebar state:", error);
+    }
+    return null;
+  });
+
+  // Save state to localStorage whenever it changes
+  useEffect(() => {
+    try {
+      const state: SidebarState = {
+        activeView,
+        selectedThreadId,
+      };
+      localStorage.setItem(`${STORAGE_KEY_PREFIX}${documentId}`, JSON.stringify(state));
+    } catch (error) {
+      console.error("Failed to save sidebar state:", error);
+    }
+  }, [documentId, activeView, selectedThreadId]);
+
+  const handleViewChange = (view: "chat" | "highlights") => {
+    setActiveView(view);
+  };
+
+  const handleThreadChange = (threadId: string | null) => {
+    setSelectedThreadId(threadId);
+  };
 
   return (
     <div className="bg-background flex h-full w-full flex-col overflow-hidden rounded-3xl border border-gray-300 shadow-2xl">
@@ -27,7 +82,7 @@ export function SidePanel({ documentId, currentPage, onJumpToPage }: SidePanelPr
           <Button
             variant={activeView === "chat" ? "default" : "ghost"}
             size="icon"
-            onClick={() => setActiveView("chat")}
+            onClick={() => handleViewChange("chat")}
             className={cn(
               "h-8 w-8 rounded-full",
               activeView === "chat" ? "bg-primary text-primary-foreground" : "hover:bg-muted"
@@ -39,7 +94,7 @@ export function SidePanel({ documentId, currentPage, onJumpToPage }: SidePanelPr
           <Button
             variant={activeView === "highlights" ? "default" : "ghost"}
             size="icon"
-            onClick={() => setActiveView("highlights")}
+            onClick={() => handleViewChange("highlights")}
             className={cn(
               "h-8 w-8 rounded-full",
               activeView === "highlights" ? "bg-primary text-primary-foreground" : "hover:bg-muted"
@@ -59,7 +114,12 @@ export function SidePanel({ documentId, currentPage, onJumpToPage }: SidePanelPr
             activeView === "chat" ? "opacity-100" : "pointer-events-none opacity-0"
           )}
         >
-          <ChatPanel documentId={documentId} currentPage={currentPage} />
+          <ChatPanel
+            documentId={documentId}
+            currentPage={currentPage}
+            initialThreadId={selectedThreadId}
+            onThreadChange={handleThreadChange}
+          />
         </div>
         <div
           className={cn(

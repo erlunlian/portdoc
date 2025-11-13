@@ -58,6 +58,7 @@ export interface Message {
   metadata: {
     pages?: number[];
     chunk_ids?: string[];
+    highlight_contexts?: Array<{ text: string; page: number }>;
   } | null;
   created_at: string;
 }

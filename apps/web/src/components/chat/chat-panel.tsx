@@ -11,6 +11,8 @@ import { ThreadTabs } from "./thread-tabs";
 interface ChatPanelProps {
   documentId: string;
   currentPage?: number;
+  initialThreadId?: string | null;
+  onThreadChange?: (threadId: string | null) => void;
 }
 
 interface HighlightContext {
@@ -21,16 +23,27 @@ interface HighlightContext {
 
 const NEW_CHAT_ID = "new-chat-pending";
 
-export function ChatPanel({ documentId, currentPage }: ChatPanelProps) {
-  // Start with a virtual new chat selected
-  const [selectedThreadId, setSelectedThreadId] = useState<string | null>(NEW_CHAT_ID);
+export function ChatPanel({
+  documentId,
+  currentPage,
+  initialThreadId,
+  onThreadChange,
+}: ChatPanelProps) {
+  // Initialize thread ID from prop if provided, otherwise start with new chat
+  const [selectedThreadId, setSelectedThreadId] = useState<string | null>(
+    initialThreadId || NEW_CHAT_ID
+  );
   const [input, setInput] = useState("");
   const [streamingMessage, setStreamingMessage] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
   const [showArchive, setShowArchive] = useState(false);
   const [localMessages, setLocalMessages] = useState<Message[]>([]);
-  const [isNewThread, setIsNewThread] = useState(true); // Start as new thread
-  const [hasPendingNewChat, setHasPendingNewChat] = useState(true); // Track if pending new chat exists
+  const [isNewThread, setIsNewThread] = useState(
+    !initialThreadId || initialThreadId === NEW_CHAT_ID
+  ); // Start as new thread if no initial thread
+  const [hasPendingNewChat, setHasPendingNewChat] = useState(
+    !initialThreadId || initialThreadId === NEW_CHAT_ID
+  ); // Track if pending new chat exists
   const [messagesCache, setMessagesCache] = useState<Record<string, Message[]>>({}); // Cache messages per thread
   const [highlightContexts, setHighlightContexts] = useState<HighlightContext[]>([]); // Highlight context pills
   const queryClient = useQueryClient();
@@ -52,7 +65,22 @@ export function ChatPanel({ documentId, currentPage }: ChatPanelProps) {
 
   const threads = threadsData?.threads || [];
 
-  // Don't auto-select threads anymore - start with empty chat
+  // Validate that initialThreadId exists in threads, if not reset to new chat
+  useEffect(() => {
+    if (!initialThreadId || initialThreadId === NEW_CHAT_ID) return;
+
+    // Only validate if threads have loaded
+    if (threads.length > 0) {
+      const threadExists = threads.some((t) => t.id === initialThreadId);
+      if (!threadExists && selectedThreadId === initialThreadId) {
+        // Initial thread no longer exists, reset to new chat
+        setSelectedThreadId(NEW_CHAT_ID);
+        setIsNewThread(true);
+        setHasPendingNewChat(true);
+        onThreadChange?.(NEW_CHAT_ID);
+      }
+    }
+  }, [threads, initialThreadId, selectedThreadId, onThreadChange]);
 
   // Handle thread selection
   const handleThreadSelect = (threadId: string) => {
@@ -62,12 +90,21 @@ export function ChatPanel({ documentId, currentPage }: ChatPanelProps) {
       setIsNewThread(false);
     }
     setSelectedThreadId(threadId);
+    // Notify parent of thread change
+    onThreadChange?.(threadId);
   };
 
   // Cache and load messages when switching threads
   useEffect(() => {
     // Only cache when thread actually changes
     if (prevThreadIdRef.current && prevThreadIdRef.current !== selectedThreadId) {
+      // Don't clear messages if we're currently streaming (this happens when a new thread is created)
+      if (isStreaming) {
+        // Just update the ref and return - we'll handle the messages after streaming completes
+        prevThreadIdRef.current = selectedThreadId;
+        return;
+      }
+
       // IMPORTANT: Save messages BEFORE loading new thread's messages
       const prevMessages = localMessagesRef.current;
       if (prevMessages.length > 0) {
@@ -106,7 +143,7 @@ export function ChatPanel({ documentId, currentPage }: ChatPanelProps) {
 
     // Update ref for next switch (after all operations)
     prevThreadIdRef.current = selectedThreadId;
-  }, [selectedThreadId]);
+  }, [selectedThreadId, isStreaming]);
 
   // Fetch messages for selected thread (but not for placeholder or newly created threads)
   const { data: messagesData } = useQuery<{ messages: Message[]; total: number }>({
@@ -166,15 +203,6 @@ export function ChatPanel({ documentId, currentPage }: ChatPanelProps) {
 
     const messageText = input.trim();
 
-    // Format message with highlight contexts
-    let fullMessageText = messageText;
-    if (highlightContexts.length > 0) {
-      const contextTexts = highlightContexts
-        .map((ctx) => `[Page ${ctx.page}]: "${ctx.text}"`)
-        .join("\n\n");
-      fullMessageText = `${contextTexts}\n\n${messageText}`;
-    }
-
     setInput("");
     setIsStreaming(true);
     setStreamingMessage("");
@@ -183,14 +211,23 @@ export function ChatPanel({ documentId, currentPage }: ChatPanelProps) {
     const isNewChat = selectedThreadId === NEW_CHAT_ID;
 
     // Add user message optimistically (always, for both new and existing)
+    // Store the clean message text (without contexts) and contexts separately in metadata
     const userMessage: Message = {
       id: `temp-${Date.now()}`,
       thread_id: selectedThreadId || NEW_CHAT_ID,
       role: "user",
-      content: fullMessageText,
+      content: messageText, // Clean message without context text
       tokens_prompt: null,
       tokens_completion: null,
-      metadata: null,
+      metadata:
+        highlightContexts.length > 0
+          ? {
+              highlight_contexts: highlightContexts.map((ctx) => ({
+                text: ctx.text,
+                page: ctx.page,
+              })),
+            }
+          : null,
       created_at: new Date().toISOString(),
     };
     setLocalMessages((prev) => [...prev, userMessage]);
@@ -200,11 +237,28 @@ export function ChatPanel({ documentId, currentPage }: ChatPanelProps) {
 
       if (isNewChat || selectedThreadId === NEW_CHAT_ID) {
         // Use the new start-chat endpoint
-        response = await apiClient.startChat(documentId, fullMessageText, currentPage);
+        // Send clean message and contexts separately
+        const contextsArray =
+          highlightContexts.length > 0
+            ? highlightContexts.map((ctx) => ({ text: ctx.text, page: ctx.page }))
+            : undefined;
+        response = await apiClient.startChat(documentId, messageText, currentPage, contextsArray);
       } else {
         // Use existing thread streaming endpoint
         const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000/v1";
-        const url = `${apiBaseUrl}/threads/${selectedThreadId}/stream?query=${encodeURIComponent(fullMessageText)}${currentPage ? `&page_context=${currentPage}` : ""}`;
+        const params = new URLSearchParams({
+          query: messageText, // Send clean message
+        });
+        if (currentPage) {
+          params.append("page_context", currentPage.toString());
+        }
+        if (highlightContexts.length > 0) {
+          params.append(
+            "highlight_contexts",
+            JSON.stringify(highlightContexts.map((ctx) => ({ text: ctx.text, page: ctx.page })))
+          );
+        }
+        const url = `${apiBaseUrl}/threads/${selectedThreadId}/stream?${params}`;
 
         response = await fetch(url);
       }
@@ -244,6 +298,9 @@ export function ChatPanel({ documentId, currentPage }: ChatPanelProps) {
                   setSelectedThreadId(data.thread_id);
                   setIsNewThread(true); // Mark this as a new thread to prevent fetching
                   setHasPendingNewChat(false); // No longer have a pending new chat
+
+                  // Notify parent of thread change
+                  onThreadChange?.(data.thread_id);
 
                   // Update existing messages with new thread ID
                   setLocalMessages((prev) =>
@@ -322,8 +379,13 @@ export function ChatPanel({ documentId, currentPage }: ChatPanelProps) {
                 // Clear highlight contexts after successful send
                 setHighlightContexts([]);
 
+                // Mark thread as no longer new after first message exchange completes
+                // This allows the query to refetch and sync messages with real IDs
+                if (isNewThread) {
+                  setIsNewThread(false);
+                }
+
                 // After streaming completes, invalidate and refetch messages to get server-side messages with real IDs
-                // But only for existing threads (not for brand new threads that were just created)
                 if (currentThreadId && currentThreadId !== NEW_CHAT_ID) {
                   setTimeout(() => {
                     queryClient.invalidateQueries({ queryKey: ["messages", currentThreadId] });
@@ -357,6 +419,7 @@ export function ChatPanel({ documentId, currentPage }: ChatPanelProps) {
     if (hasPendingNewChat) {
       setSelectedThreadId(NEW_CHAT_ID);
       setIsNewThread(true);
+      onThreadChange?.(NEW_CHAT_ID);
       return;
     }
 
@@ -370,6 +433,8 @@ export function ChatPanel({ documentId, currentPage }: ChatPanelProps) {
     const { [NEW_CHAT_ID]: removed, ...rest } = messagesCacheRef.current;
     messagesCacheRef.current = rest;
     setMessagesCache(rest);
+    // Notify parent of thread change
+    onThreadChange?.(NEW_CHAT_ID);
   };
 
   const handleDeleteThread = async (threadId: string) => {
@@ -385,12 +450,14 @@ export function ChatPanel({ documentId, currentPage }: ChatPanelProps) {
       if (threads.length > 0) {
         setSelectedThreadId(threads[0].id);
         setIsNewThread(false);
+        onThreadChange?.(threads[0].id);
       } else {
         // No threads left, create a new pending chat
         setSelectedThreadId(NEW_CHAT_ID);
         setIsNewThread(true);
         setHasPendingNewChat(true);
         setLocalMessages([]);
+        onThreadChange?.(NEW_CHAT_ID);
       }
       return;
     }
@@ -404,18 +471,22 @@ export function ChatPanel({ documentId, currentPage }: ChatPanelProps) {
         const remainingThreads = threads.filter((t) => t.id !== threadId);
         if (remainingThreads.length > 0) {
           // Select the first remaining thread
-          setSelectedThreadId(remainingThreads[0].id);
+          const newThreadId = remainingThreads[0].id;
+          setSelectedThreadId(newThreadId);
           setIsNewThread(false);
+          onThreadChange?.(newThreadId);
         } else if (hasPendingNewChat) {
           // Switch to pending new chat if it exists
           setSelectedThreadId(NEW_CHAT_ID);
           setIsNewThread(true);
+          onThreadChange?.(NEW_CHAT_ID);
         } else {
           // No threads left, create a new pending chat
           setSelectedThreadId(NEW_CHAT_ID);
           setIsNewThread(true);
           setHasPendingNewChat(true);
           setLocalMessages([]);
+          onThreadChange?.(NEW_CHAT_ID);
         }
       }
 
