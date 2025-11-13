@@ -156,7 +156,7 @@ export function Sidebar({ documents, isLoading, onSearchClick }: SidebarProps) {
                   <div key={i} className="bg-muted h-8 animate-pulse rounded-xl" />
                 ))}
               </div>
-            ) : documents.length === 0 ? (
+            ) : documents.length === 0 && !isCollapsed ? (
               <div className="p-4 text-center text-xs text-gray-500">No PDFs uploaded yet</div>
             ) : !isCollapsed ? (
               <div className="px-2">

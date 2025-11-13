@@ -1,6 +1,7 @@
 """PDF ingestion service for text extraction and chunking"""
 
 import re
+import xml.etree.ElementTree as ET
 from uuid import UUID
 
 import fitz  # PyMuPDF
@@ -49,6 +50,47 @@ class IngestionService:
 
         return None
 
+    async def fetch_arxiv_title(self, arxiv_id: str) -> str | None:
+        """
+        Fetch paper title from arXiv API
+        Returns the paper title or None if fetch fails
+        """
+        try:
+            # arXiv API endpoint (use HTTPS)
+            api_url = f"https://export.arxiv.org/api/query?id_list={arxiv_id}"
+
+            logger.info("Fetching arXiv metadata", arxiv_id=arxiv_id, url=api_url)
+
+            async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
+                response = await client.get(api_url)
+                response.raise_for_status()
+
+                # Parse XML response
+                root = ET.fromstring(response.content)
+
+                # arXiv API uses Atom namespace
+                namespaces = {"atom": "http://www.w3.org/2005/Atom"}
+
+                # Find the title element
+                title_elem = root.find(".//atom:entry/atom:title", namespaces)
+
+                if title_elem is not None and title_elem.text:
+                    # Clean up the title (arXiv titles can have extra whitespace/newlines)
+                    title = " ".join(title_elem.text.split())
+                    logger.info("Successfully fetched arXiv title", arxiv_id=arxiv_id, title=title)
+                    return title
+                else:
+                    logger.warning("No title found in arXiv API response", arxiv_id=arxiv_id)
+                    return None
+
+        except Exception as e:
+            logger.warning(
+                "Failed to fetch arXiv title, will use arxiv ID as fallback",
+                arxiv_id=arxiv_id,
+                error=str(e),
+            )
+            return None
+
     async def download_arxiv_pdf(self, arxiv_url: str) -> tuple[bytes, str]:
         """
         Download PDF from arxiv URL
@@ -61,10 +103,19 @@ class IngestionService:
         # Remove version suffix if present for the download URL
         arxiv_id_no_version = re.sub(r"v\d+$", "", arxiv_id)
 
+        # Fetch paper title from arXiv API
+        paper_title = await self.fetch_arxiv_title(arxiv_id_no_version)
+
+        # Use paper title if available, otherwise fall back to arxiv ID
+        if paper_title:
+            title = paper_title
+        else:
+            title = f"arxiv:{arxiv_id}"
+
         # Construct PDF download URL
         pdf_url = f"https://arxiv.org/pdf/{arxiv_id_no_version}.pdf"
 
-        logger.info("Downloading arxiv PDF", arxiv_id=arxiv_id, url=pdf_url)
+        logger.info("Downloading arxiv PDF", arxiv_id=arxiv_id, url=pdf_url, title=title)
 
         async with httpx.AsyncClient(timeout=60.0, follow_redirects=True) as client:
             response = await client.get(pdf_url)
@@ -73,13 +124,11 @@ class IngestionService:
             if response.headers.get("content-type") != "application/pdf":
                 raise ValueError(f"URL did not return a PDF: {pdf_url}")
 
-            # Use arxiv ID as title
-            title = f"arxiv:{arxiv_id}"
-
             logger.info(
                 "Successfully downloaded arxiv PDF",
                 arxiv_id=arxiv_id,
                 size_bytes=len(response.content),
+                title=title,
             )
 
             return response.content, title
